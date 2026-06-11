@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+allowBuilds:
+  '@j178/prek': false
+  esbuild: true
+  protobufjs: false
+  puppeteer: false

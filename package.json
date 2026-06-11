@@ -30,7 +30,7 @@
     "@types/node": "^25.2.3",
     "bumpp": "^11.0.1",
     "knip": "^5.82.1",
-    "tinyglobby": "^0.2.15",
+    "tinyglobby": "^0.2.17",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
   }

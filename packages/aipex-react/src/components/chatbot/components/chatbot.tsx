@@ -170,6 +170,7 @@ export function ChatbotProvider({
       reset: chatState.reset,
       regenerate: chatState.regenerate,
       setMessages: chatState.setMessages,
+      attachExternalTurn: chatState.attachExternalTurn,
     }),
     [
       chatState.messages,
@@ -182,6 +183,7 @@ export function ChatbotProvider({
       chatState.reset,
       chatState.regenerate,
       chatState.setMessages,
+      chatState.attachExternalTurn,
     ],
   );
 

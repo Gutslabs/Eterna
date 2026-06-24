@@ -179,6 +179,18 @@ export class ChatAdapter {
         this.appendContentDelta(event.delta);
         break;
 
+      case "reasoning_delta":
+        // Thinking that follows tool calls belongs to the next model turn —
+        // start a fresh assistant message, mirroring content_delta above.
+        if (this.toolsAddedSinceLastText) {
+          this.state.currentAssistantMessageId = null;
+          this.toolsAddedSinceLastText = false;
+        }
+        this.ensureAssistantMessage();
+        this.updateStatus("streaming");
+        this.appendReasoningDelta(event.delta);
+        break;
+
       case "tool_call_args_streaming_start":
         this.ensureAssistantMessage();
         this.ensurePendingToolCall(event.toolName, {});
@@ -284,6 +296,26 @@ export class ChatAdapter {
   /**
    * Remove the last assistant message (for regeneration)
    */
+  /**
+   * Remove ALL trailing assistant messages (the whole turn). Mirrors the
+   * agent-side rollback, which pops everything after the last user item —
+   * removing only the final message left the turn's earlier tool messages
+   * behind and duplicated their steps on the activity rail after a retry.
+   */
+  removeLastAssistantTurn(): boolean {
+    let end = this.state.messages.length;
+    while (end > 0 && this.state.messages[end - 1]?.role === "assistant") {
+      end -= 1;
+    }
+    if (end === this.state.messages.length) {
+      return false;
+    }
+    this.state.messages = this.state.messages.slice(0, end);
+    this.state.currentAssistantMessageId = null;
+    this.options.onMessagesUpdate?.(this.state.messages);
+    return true;
+  }
+
   removeLastAssistantMessage(): UIMessage | null {
     const messages = [...this.state.messages];
     let removed: UIMessage | null = null;
@@ -373,6 +405,23 @@ export class ChatAdapter {
         } else {
           parts.push({ type: "text", text: delta });
         }
+      }
+
+      return { ...message, parts };
+    });
+  }
+
+  private appendReasoningDelta(delta: string): void {
+    this.updateCurrentAssistantMessage((message) => {
+      const parts = [...message.parts];
+      const last = parts[parts.length - 1];
+
+      // Extend only a trailing reasoning part; thinking separated by tools
+      // or text forms a new rail step.
+      if (last?.type === "reasoning") {
+        parts[parts.length - 1] = { ...last, text: last.text + delta };
+      } else {
+        parts.push({ type: "reasoning", text: delta });
       }
 
       return { ...message, parts };

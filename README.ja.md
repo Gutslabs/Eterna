@@ -1,14 +1,14 @@
-<p align="center"><a href="https://claudechrome.com"><img alt="AIPex Browser Automation" src="https://github.com/user-attachments/assets/039768c0-1765-4a98-b020-57955e4a224a" width="100%" />
+<p align="center"><a href="https://claudechrome.com"><img alt="Eterna Browser Automation" src="https://github.com/user-attachments/assets/039768c0-1765-4a98-b020-57955e4a224a" width="100%" />
 </a></p>
 
 <strong><p align="center">あなたのブラウザはすでに機能しています！</p></strong>
 
 
 <p align="center">
-  <a href="https://chromewebstore.google.com/detail/aipex-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar">
+  <a href="https://chromewebstore.google.com/detail/eterna-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar">
     <img src="https://img.shields.io/badge/Chrome%20Web%20Store-インストール-4285F4?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Chrome Web Store">
   </a>
-  <a href="https://microsoftedge.microsoft.com/addons/detail/aipex/fkgfflijckgpphikbceckjbofkicfnfa">
+  <a href="https://microsoftedge.microsoft.com/addons/detail/eterna/fkgfflijckgpphikbceckjbofkicfnfa">
     <img src="https://img.shields.io/badge/Edge%20Add--ons-インストール-0078D4?style=for-the-badge&logo=microsoft-edge&logoColor=white" alt="Edge Add-ons">
   </a>
 </p>
@@ -18,7 +18,7 @@
   <br>
   <a href="https://discord.gg/sfZC3G5qfe"><img src="https://img.shields.io/badge/-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://x.com/weikangzhang3"><img src="https://img.shields.io/badge/-000000?style=for-the-badge&logo=x&logoColor=white" alt="X/Twitter"></a>
-  <a href="https://www.youtube.com/@aipex-chrome-extension"><img src="https://img.shields.io/badge/-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
+  <a href="https://www.youtube.com/@eterna-chrome-extension"><img src="https://img.shields.io/badge/-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
   <br>
   <br>
   <a href="README.md">English</a> | <a href="README.zh-CN.md">中文</a> | <a href="README.de.md">Deutsch</a> | <a href="README.es.md">Español</a> | <a href="README.fr.md">Français</a> | <a href="README.ja.md">日本語</a> | <a href="README.ko.md">한국어</a> | <a href="README.pt.md">Português</a> | <a href="README.ru.md">Русский</a>
@@ -26,12 +26,12 @@
 
 <!-- TODO: Add a hero GIF here showing the core automation flow -->
 <!-- <p align="center">
-  <img src="assets/demo.gif" alt="AIPex Demo" width="600">
+  <img src="assets/demo.gif" alt="Eterna Demo" width="600">
 </p> -->
 
 ---
 
-**AIPex** — 既存のブラウザに常駐するオープンソースのブラウザ自動化エージェント。
+**Eterna** — 既存のブラウザに常駐するオープンソースのブラウザ自動化エージェント。
 
 - **移行ゼロ**: 新しいブラウザをインストールする必要はありません。新しいワークフローを学ぶ必要もありません。
 - **オープンソース**: MITライセンス。完全に透明で、監査可能で、拡張可能です。
@@ -48,24 +48,24 @@
 
 **私たちは問いました：なぜ自動化は、すでに使用しているブラウザで実行できないのか？**
 
-AIPexがその答えです。拡張機能をインストールし、独自のAPIキーを持参して、すでに作業している場所で何でも自動化します。
+Eternaがその答えです。拡張機能をインストールし、独自のAPIキーを持参して、すでに作業している場所で何でも自動化します。
 
 ---
 
 ## クイックスタート
 
-1. **インストール** — [Chrome Web Store](https://chromewebstore.google.com/detail/aipex-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar) または [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/aipex/fkgfflijckgpphikbceckjbofkicfnfa)
-2. **開く** — AIPexアイコンを押す
+1. **インストール** — [Chrome Web Store](https://chromewebstore.google.com/detail/eterna-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar) または [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/eterna/fkgfflijckgpphikbceckjbofkicfnfa)
+2. **開く** — Eternaアイコンを押す
 3. **自動化** — 自然言語でやりたいことを入力または話す
 
 ---
 
 ## AIエージェントとの連携（MCP）
 
-AIPexは[Model Context Protocol（MCP）](https://modelcontextprotocol.io)をサポートし、Cursor・Claude Code・VS Code CopilotなどのAIエージェントがブラウザを直接操作できるようになりました。
+Eternaは[Model Context Protocol（MCP）](https://modelcontextprotocol.io)をサポートし、Cursor・Claude Code・VS Code CopilotなどのAIエージェントがブラウザを直接操作できるようになりました。
 
 ```
-AI Agent ──stdio──▶ aipex-mcp-bridge ──WebSocket──▶ AIPex Extension ──▶ Browser
+AI Agent ──stdio──▶ eterna-mcp-bridge ──WebSocket──▶ Eterna Extension ──▶ Browser
 ```
 
 ### ステップ1：エージェントを設定する
@@ -75,9 +75,9 @@ AI Agent ──stdio──▶ aipex-mcp-bridge ──WebSocket──▶ AIPex Ex
 ```json
 {
   "mcpServers": {
-    "aipex-browser": {
+    "eterna-browser": {
       "command": "npx",
-      "args": ["-y", "aipex-mcp-bridge"]
+      "args": ["-y", "eterna-mcp-bridge"]
     }
   }
 }
@@ -86,7 +86,7 @@ AI Agent ──stdio──▶ aipex-mcp-bridge ──WebSocket──▶ AIPex Ex
 **Claude Code**:
 
 ```bash
-claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
+claude mcp add eterna-browser -- npx -y eterna-mcp-bridge
 ```
 
 **VS Code Copilot** (`.vscode/mcp.json`):
@@ -94,9 +94,9 @@ claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
 ```json
 {
   "servers": {
-    "aipex-browser": {
+    "eterna-browser": {
       "command": "npx",
-      "args": ["-y", "aipex-mcp-bridge"]
+      "args": ["-y", "eterna-mcp-bridge"]
     }
   }
 }
@@ -104,7 +104,7 @@ claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
 
 ### ステップ2：拡張機能を接続する
 
-1. Chrome → AIPexアイコン → **オプション**を開く
+1. Chrome → Eternaアイコン → **オプション**を開く
 2. WebSocket URLを `ws://localhost:9223` に設定
 3. **接続**をクリック
 
@@ -114,7 +114,7 @@ claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
 
 ## スキル（Skill）
 
-AIPexは**`aipex-browser`**スキルを提供します。[Claude Code](https://claude.ai/code)や[OpenClaw](https://openclaw.dev)互換ランタイムなど、スキルプロトコルに対応したエージェントがすぐに使えるブラウザ自動化スキルパッケージです。
+Eternaは**`eterna-browser`**スキルを提供します。[Claude Code](https://claude.ai/code)や[OpenClaw](https://openclaw.dev)互換ランタイムなど、スキルプロトコルに対応したエージェントがすぐに使えるブラウザ自動化スキルパッケージです。
 
 スキルには、ツール使用戦略・30以上のブラウザツールの完全なパラメータスキーマ・よく使われるパターンが含まれており、エージェントが試行錯誤なしにブラウザを効率よく操作できます。
 
@@ -142,11 +142,11 @@ https://github.com/user-attachments/assets/ba454715-c759-41df-bf87-e835f76be365
 
 ---
 
-## AIPexの比較
+## Eternaの比較
 
 *すでにあるブラウザを自動化できるのに、なぜ新しいブラウザをインストールするのですか？*
 
-| 機能 | AIPex | ChatGPT Atlas | Dia/Comet | Manus |
+| 機能 | Eterna | ChatGPT Atlas | Dia/Comet | Manus |
 |------|-------|---------------|-----------|-------|
 | **ブラウザ移行** | なし | 必須 | 必須 | なし |
 | **価格** | 無料 | 有料 | 有料 | 有料 |
@@ -164,24 +164,24 @@ https://github.com/user-attachments/assets/ba454715-c759-41df-bf87-e835f76be365
 
 ## 貢献者
 
-<a href="https://github.com/buttercannfly/AIPex/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=buttercannfly/AIPex" />
+<a href="https://github.com/Gutslabs/Eterna/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Gutslabs/Eterna" />
 </a>
 
 ---
 
 ## スター履歴
 
-[![Star History Chart](https://api.star-history.com/svg?repos=buttercannfly/AIPex&type=Date)](https://star-history.com/#buttercannfly/AIPex&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Gutslabs/Eterna&type=Date)](https://star-history.com/#Gutslabs/Eterna&Date)
 
 ---
 
 <p align="center">
-  <strong>AIPexチームによる❤️で作られました</strong>
+  <strong>Eternaチームによる❤️で作られました</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/buttercannfly/AIPex"><img src="https://img.shields.io/badge/GitHub-100000?logo=github&logoColor=white" alt="GitHub"></a>
-  <a href="https://chromewebstore.google.com/detail/aipex-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar"><img src="https://img.shields.io/badge/Chrome-4285F4?logo=google-chrome&logoColor=white" alt="Chrome"></a>
-  <a href="https://microsoftedge.microsoft.com/addons/detail/aipex/fkgfflijckgpphikbceckjbofkicfnfa"><img src="https://img.shields.io/badge/Edge-0078D4?logo=microsoft-edge&logoColor=white" alt="Edge"></a>
+  <a href="https://github.com/Gutslabs/Eterna"><img src="https://img.shields.io/badge/GitHub-100000?logo=github&logoColor=white" alt="GitHub"></a>
+  <a href="https://chromewebstore.google.com/detail/eterna-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar"><img src="https://img.shields.io/badge/Chrome-4285F4?logo=google-chrome&logoColor=white" alt="Chrome"></a>
+  <a href="https://microsoftedge.microsoft.com/addons/detail/eterna/fkgfflijckgpphikbceckjbofkicfnfa"><img src="https://img.shields.io/badge/Edge-0078D4?logo=microsoft-edge&logoColor=white" alt="Edge"></a>
 </p>

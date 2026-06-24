@@ -1,8 +1,8 @@
-# @aipexstudio/aipex-react
+# @eternastudio/eterna-react
 
-React UI toolkit for building AIPex-powered chat and extension experiences.
+React UI toolkit for building Eterna-powered chat and extension experiences.
 
-This package depends on `@aipexstudio/aipex-core` only (no browser-specific runtime code). It provides:
+This package depends on `@eternastudio/eterna-core` only (no browser-specific runtime code). It provides:
 
 - **Chat UI**: `<Chatbot />` and related components, slots, and themes
 - **Headless primitives**: `useChat`, `ChatAdapter` (convert core `AgentEvent` streams into UI messages)
@@ -12,7 +12,7 @@ This package depends on `@aipexstudio/aipex-core` only (no browser-specific runt
 
 ## Design notes
 
-- **Core-first**: UI consumes `AgentEvent` from `@aipexstudio/aipex-core` and does not assume a runtime.
+- **Core-first**: UI consumes `AgentEvent` from `@eternastudio/eterna-core` and does not assume a runtime.
 - **Storage abstraction**: persistence is done through `KeyValueStorage` (localStorage by default; can be
   swapped for `chrome.storage`, IndexedDB, etc).
 - **Streaming UX**: the adapter + hooks are built around incremental updates and tool lifecycle states.
@@ -21,9 +21,9 @@ This package depends on `@aipexstudio/aipex-core` only (no browser-specific runt
 ## Installation
 
 ```bash
-npm install @aipexstudio/aipex-react @aipexstudio/aipex-core
+npm install @eternastudio/eterna-react @eternastudio/eterna-core
 # or
-pnpm add @aipexstudio/aipex-react @aipexstudio/aipex-core
+pnpm add @eternastudio/eterna-react @eternastudio/eterna-core
 ```
 
 Peer dependencies:
@@ -35,10 +35,10 @@ Peer dependencies:
 
 ```tsx
 import { google } from "@ai-sdk/google";
-import { AIPex, aisdk } from "@aipexstudio/aipex-core";
-import { Chatbot } from "@aipexstudio/aipex-react";
+import { Eterna, aisdk } from "@eternastudio/eterna-core";
+import { Chatbot } from "@eternastudio/eterna-react";
 
-const agent = AIPex.create({
+const agent = Eterna.create({
   instructions: "You are a helpful assistant.",
   model: aisdk(google("gemini-2.5-flash")),
 });
@@ -55,7 +55,7 @@ export function App() {
 `useChat` is a rendering-free hook for building your own UI.
 
 ```tsx
-import { useChat } from "@aipexstudio/aipex-react";
+import { useChat } from "@eternastudio/eterna-react";
 
 export function MyChat({ agent }: { agent: any }) {
   const { messages, status, sendMessage, interrupt, reset, regenerate } = useChat(agent);
@@ -86,7 +86,7 @@ Built-in themes:
 You can also build your own theme:
 
 ```tsx
-import { Chatbot, createTheme } from "@aipexstudio/aipex-react";
+import { Chatbot, createTheme } from "@eternastudio/eterna-react";
 
 const myTheme = createTheme({
   className: "my-chat",
@@ -109,7 +109,7 @@ export function App({ agent }: { agent: any }) {
 - **Slots** (inject custom UI fragments like tool display, message actions, etc.)
 
 ```tsx
-import { Chatbot } from "@aipexstudio/aipex-react";
+import { Chatbot } from "@eternastudio/eterna-react";
 
 export function App({ agent }: { agent: any }) {
   return (
@@ -128,11 +128,11 @@ export function App({ agent }: { agent: any }) {
 `useChatConfig` loads/saves `AppSettings` using a `KeyValueStorage` adapter.
 
 - Default storage: localStorage-backed adapter
-- Extension storage: pass any `KeyValueStorage` (e.g. `ChromeStorageAdapter` from `@aipexstudio/browser-runtime`)
+- Extension storage: pass any `KeyValueStorage` (e.g. `ChromeStorageAdapter` from `@eternastudio/browser-runtime`)
 
 ```tsx
-import { SettingsPage } from "@aipexstudio/aipex-react";
-import { chromeStorageAdapter } from "@aipexstudio/browser-runtime";
+import { SettingsPage } from "@eternastudio/eterna-react";
+import { chromeStorageAdapter } from "@eternastudio/browser-runtime";
 
 export function Options() {
   return <SettingsPage storageAdapter={chromeStorageAdapter} />;
@@ -143,16 +143,16 @@ export function Options() {
 
 This package exposes i18n + theme contexts via subpath exports:
 
-- `@aipexstudio/aipex-react/i18n/context`
-- `@aipexstudio/aipex-react/theme/context`
+- `@eternastudio/eterna-react/i18n/context`
+- `@eternastudio/eterna-react/theme/context`
 
 ```tsx
-import { ChromeStorageAdapter } from "@aipexstudio/browser-runtime";
-import { I18nProvider } from "@aipexstudio/aipex-react/i18n/context";
-import { ThemeProvider } from "@aipexstudio/aipex-react/theme/context";
-import type { Language } from "@aipexstudio/aipex-react/i18n/types";
-import type { Theme } from "@aipexstudio/aipex-react/theme/types";
-import { Chatbot } from "@aipexstudio/aipex-react";
+import { ChromeStorageAdapter } from "@eternastudio/browser-runtime";
+import { I18nProvider } from "@eternastudio/eterna-react/i18n/context";
+import { ThemeProvider } from "@eternastudio/eterna-react/theme/context";
+import type { Language } from "@eternastudio/eterna-react/i18n/types";
+import type { Theme } from "@eternastudio/eterna-react/theme/types";
+import { Chatbot } from "@eternastudio/eterna-react";
 
 const i18nStorage = new ChromeStorageAdapter<Language>();
 const themeStorage = new ChromeStorageAdapter<Theme>();
@@ -177,7 +177,7 @@ export function App({ agent }: { agent: any }) {
 - integrates with `chrome.runtime`-like message passing (when available)
 
 ```tsx
-import { ContentScript, type ContentScriptPlugin } from "@aipexstudio/aipex-react";
+import { ContentScript, type ContentScriptPlugin } from "@eternastudio/eterna-react";
 
 const loggerPlugin: ContentScriptPlugin = {
   name: "logger",
@@ -205,7 +205,7 @@ export function InjectedUI() {
 ### Chatbot components
 
 - `Chatbot(props)`
-  - `agent: AIPex | undefined`
+  - `agent: Eterna | undefined`
   - `config?: ChatConfig`
   - `handlers?: ChatbotEventHandlers`
   - `components?: ChatbotComponents`
@@ -258,14 +258,14 @@ Customize specific parts of the Chatbot UI:
 
 ### i18n (subpath exports)
 
-Import from `@aipexstudio/aipex-react/i18n/context`:
+Import from `@eternastudio/eterna-react/i18n/context`:
 
 - `I18nProvider({ storageAdapter, children })`
 - `useTranslation()` → `{ language, t(key, params?), changeLanguage }`
 
 ### Global theme (subpath exports)
 
-Import from `@aipexstudio/aipex-react/theme/context`:
+Import from `@eternastudio/eterna-react/theme/context`:
 
 - `ThemeProvider({ storageAdapter, scope?, children })`
 - `useTheme()` → `{ theme, effectiveTheme, changeTheme }`
@@ -285,8 +285,8 @@ Import from `@aipexstudio/aipex-react/theme/context`:
 
 Built-in runtime message actions handled by `ContentScript`:
 
-- `message.action === "aipex_open_omni"`
-- `message.action === "aipex_close_omni"`
+- `message.action === "eterna_open_omni"`
+- `message.action === "eterna_close_omni"`
 
 ### Misc components
 
@@ -299,9 +299,9 @@ Built-in runtime message actions handled by `ContentScript`:
 From the repository root:
 
 ```bash
-pnpm --filter @aipexstudio/aipex-react build
-pnpm --filter @aipexstudio/aipex-react typecheck
-pnpm --filter @aipexstudio/aipex-react test
+pnpm --filter @eternastudio/eterna-react build
+pnpm --filter @eternastudio/eterna-react typecheck
+pnpm --filter @eternastudio/eterna-react test
 ```
 
 ## License

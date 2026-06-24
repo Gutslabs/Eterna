@@ -1,5 +1,12 @@
 import { renderChatApp } from "../common/app-root";
 
+// When this page is opened as a standalone browser tab (not embedded in the
+// in-page sidebar iframe), mark it so the chat renders as a centered,
+// max-width column instead of stretching edge-to-edge — see sidepanel.html.
+if (typeof window !== "undefined" && window.self === window.top) {
+  document.documentElement.setAttribute("data-standalone", "true");
+}
+
 // Render the chat first — nothing here should block first paint.
 renderChatApp();
 

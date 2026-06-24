@@ -139,10 +139,12 @@ export function formatActivityDuration(ms: number): string {
   if (seconds < 10) {
     return `${(Math.round(seconds * 10) / 10).toFixed(1)}s`;
   }
-  if (seconds < 60) {
-    return `${Math.round(seconds)}s`;
+  // Round once, then split — flooring minutes while rounding the remainder
+  // produced "1m 60s" at minute boundaries.
+  const total = Math.round(seconds);
+  if (total < 60) {
+    return `${total}s`;
   }
-  const minutes = Math.floor(seconds / 60);
-  const rest = Math.round(seconds % 60);
-  return `${minutes}m ${rest}s`;
+  const minutes = Math.floor(total / 60);
+  return `${minutes}m ${total % 60}s`;
 }

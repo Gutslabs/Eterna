@@ -1,16 +1,16 @@
-# AIPex Browser Extension (`@aipexstudio/cool-aipex`)
+# Eterna Browser Extension (`@eternastudio/cool-eterna`)
 
-Chrome/Chromium extension (Manifest V3) that assembles the AIPex packages:
+Chrome/Chromium extension (Manifest V3) that assembles the Eterna packages:
 
-- `@aipexstudio/aipex-core` (agent framework)
-- `@aipexstudio/browser-runtime` (Chrome/extension runtime implementations)
-- `@aipexstudio/aipex-react` (React UI)
+- `@eternastudio/eterna-core` (agent framework)
+- `@eternastudio/browser-runtime` (Chrome/extension runtime implementations)
+- `@eternastudio/eterna-react` (React UI)
 
 Built with Vite + `@crxjs/vite-plugin`.
 
 ## What this extension does
 
-- **Side panel**: runs the main AIPex chat UI
+- **Side panel**: runs the main Eterna chat UI
 - **Content script**: provides an Omni command menu and page-side helpers (e.g. element capture, fake mouse)
 - **Options page**: configure providers, models, and UI settings
 
@@ -25,7 +25,7 @@ Built with Vite + `@crxjs/vite-plugin`.
 ### Content script (`src/content.tsx` → `src/pages/content/`)
 
 - Injects a React UI into the page context (using Shadow DOM + inline Tailwind CSS)
-- Listens for messages such as `{ request: "open-aipex" }` (sent by the background command handler)
+- Listens for messages such as `{ request: "open-eterna" }` (sent by the background command handler)
 - Implements element capture mode and publishes results via `chrome.runtime.sendMessage`
 
 ### Side panel (`src/pages/sidepanel/`)
@@ -35,9 +35,9 @@ Built with Vite + `@crxjs/vite-plugin`.
 
 ### Options page (`src/pages/options/`)
 
-- Uses `SettingsPage` from `@aipexstudio/aipex-react`
-- Wraps i18n and theme providers (`@aipexstudio/aipex-react/i18n/context`, `@aipexstudio/aipex-react/theme/context`)
-- Persists settings with `ChromeStorageAdapter` (`@aipexstudio/browser-runtime`)
+- Uses `SettingsPage` from `@eternastudio/eterna-react`
+- Wraps i18n and theme providers (`@eternastudio/eterna-react/i18n/context`, `@eternastudio/eterna-react/theme/context`)
+- Persists settings with `ChromeStorageAdapter` (`@eternastudio/browser-runtime`)
 
 ## Development
 
@@ -51,7 +51,7 @@ pnpm dev
 Or run just this workspace:
 
 ```bash
-pnpm --filter @aipexstudio/cool-aipex dev
+pnpm --filter @eternastudio/cool-eterna dev
 ```
 
 ### Load unpacked (dev)
@@ -65,7 +65,7 @@ pnpm --filter @aipexstudio/cool-aipex dev
 ## Build
 
 ```bash
-pnpm --filter @aipexstudio/cool-aipex build
+pnpm --filter @eternastudio/cool-eterna build
 ```
 
 Vite outputs to `dist/` by default (unless `build.outDir` is configured).
@@ -88,7 +88,7 @@ See `manifest.json` for the full list (e.g. `tabs`, `scripting`, `storage`, `deb
 ## Testing
 
 ```bash
-pnpm --filter @aipexstudio/cool-aipex test
+pnpm --filter @eternastudio/cool-eterna test
 ```
 
 ## License

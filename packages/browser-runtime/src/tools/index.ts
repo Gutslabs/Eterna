@@ -117,6 +117,9 @@ export type { BrowserFunctionTool };
 // Export intervention tools separately for optional registration
 export { interventionTools } from "./interventions/index.js";
 
+// Skill tools, re-exported for composing custom toolsets (e.g. research subagents)
+export { skillTools } from "./skill.js";
+
 interface ToolRegistryLike {
   register(tool: (typeof allBrowserTools)[number]): unknown;
 }
@@ -138,6 +141,21 @@ export {
   executeScriptInTab,
   getActiveTab,
 } from "./tab-utils";
+export {
+  TWITTER_SERVICE_URL,
+  type Tweet,
+  twitterResearchTools,
+  twitterSearchTool,
+  twitterUserTool,
+} from "./twitter";
+export {
+  htmlToText,
+  parseDuckDuckGoHtml,
+  type WebSearchResult,
+  webFetchTool,
+  webResearchTools,
+  webSearchTool,
+} from "./web";
 export {
   fetchYoutubeTranscriptForTab,
   isYoutubeVideoUrl,

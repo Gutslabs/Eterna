@@ -1,0 +1,30 @@
+# Eterna local research services — brought up together by the `eterna` command.
+#   - linkedin-mcp : stickerdaniel/linkedin-mcp-server over streamable-http (:8080)
+#   - twitter      : the CoinTheHat/twitter-scraper wrapper service (:8088)
+#
+# The model gateways (gpt-web :8000, claude-web :8001) live in the separate
+# CatGPT-Gateway compose, and Gemini/Grok come from the cliproxyapi brew
+# service (:8317) — the `eterna` shell function starts all of them.
+
+services:
+  linkedin-mcp:
+    image: stickerdaniel/linkedin-mcp-server:latest
+    container_name: eterna-linkedin-mcp
+    ports:
+      - "8080:8080"
+    volumes:
+      # The one-time LinkedIn login profile created on the host with
+      # `uvx mcp-server-linkedin@latest --login`.
+      - ${HOME}/.linkedin-mcp:/home/pwuser/.linkedin-mcp
+    command: ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8080"]
+    restart: unless-stopped
+
+  twitter:
+    build: ./services/twitter-service
+    container_name: eterna-twitter
+    ports:
+      - "8088:8088"
+    env_file:
+      # X session cookies (TWITTER_AUTH_TOKENS / TWITTER_CT0S / PORT).
+      - ./services/twitter-service/.env
+    restart: unless-stopped

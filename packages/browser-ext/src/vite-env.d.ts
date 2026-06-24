@@ -18,3 +18,9 @@ declare module "*.css?inline" {
   const content: string;
   export default content;
 }
+
+// Support for raw text imports (e.g. agent skill markdown)
+declare module "*?raw" {
+  const content: string;
+  export default content;
+}

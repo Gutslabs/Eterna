@@ -115,6 +115,8 @@ export interface ChatbotSlots {
   inputToolbar?: (props: InputToolbarSlotProps) => ReactNode;
   /** Custom model selector */
   modelSelector?: (props: ModelSelectorSlotProps) => ReactNode;
+  /** Extra controls rendered in the composer toolbar, right after the model selector */
+  composerTools?: () => ReactNode;
   /** Custom context tags display */
   contextTags?: (props: ContextTagsSlotProps) => ReactNode;
   /** Custom tool display */

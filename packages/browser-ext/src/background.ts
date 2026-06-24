@@ -3,6 +3,7 @@
  * Handles extension lifecycle events and keyboard commands
  */
 
+import { initBackgroundChatHost } from "./lib/chat-host-init";
 import {
   buildAuthorizeUrl,
   clearStoredAuth,
@@ -14,6 +15,10 @@ import {
 } from "./services/chatgpt-auth";
 
 const SIDE_PANEL_PATH = "src/sidepanel.html";
+
+// Agent run loop lives here in the SW so an in-flight turn survives
+// host-page refresh/navigation; the sidebar attaches over a port.
+initBackgroundChatHost();
 
 // Browsers without the Chrome-only chrome.sidePanel API (e.g. Arc, Dia) get
 // the same chat UI in a standalone popup window instead.

@@ -77,8 +77,8 @@ export function McpBridgePanel() {
       <h3 className="text-lg font-semibold mb-4">MCP WebSocket Bridge</h3>
       <p className="text-sm text-muted-foreground mb-4">
         Connect to an external MCP client (e.g. Claude, Cursor) via the
-        aipex-mcp-bridge. The bridge exposes Eterna browser tools to external
-        AI agents.
+        aipex-mcp-bridge. The bridge exposes Eterna browser tools to external AI
+        agents.
       </p>
 
       {/* Status indicator */}
@@ -138,8 +138,8 @@ export function McpBridgePanel() {
       <div className="mt-4 text-xs text-muted-foreground space-y-1">
         <p>
           The bridge exposes <code>tools/list</code> and <code>tools/call</code>{" "}
-          over the MCP protocol, allowing external agents to use Eterna
-          browser automation tools.
+          over the MCP protocol, allowing external agents to use Eterna browser
+          automation tools.
         </p>
         <p>Only localhost connections (127.0.0.1, ::1) are allowed.</p>
       </div>

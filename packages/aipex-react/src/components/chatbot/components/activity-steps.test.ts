@@ -163,4 +163,9 @@ describe("durations", () => {
     expect(formatActivityDuration(12400)).toBe("12s");
     expect(formatActivityDuration(83000)).toBe("1m 23s");
   });
+
+  it("never prints 60s at minute boundaries", () => {
+    expect(formatActivityDuration(59700)).toBe("1m 0s");
+    expect(formatActivityDuration(119700)).toBe("2m 0s");
+  });
 });

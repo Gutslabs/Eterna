@@ -1,4 +1,5 @@
 import type {
+  AgentEvent,
   AgentMetrics,
   AIPex,
   AppSettings,
@@ -44,6 +45,11 @@ export interface ChatContextValue {
   regenerate: () => Promise<void>;
   /** Set messages directly */
   setMessages: (messages: UIMessage[]) => void;
+  /** Attach an externally produced AgentEvent stream as the current turn */
+  attachExternalTurn: (
+    events: AsyncGenerator<AgentEvent>,
+    options?: { userText?: string },
+  ) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);

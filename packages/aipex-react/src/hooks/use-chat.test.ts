@@ -520,4 +520,98 @@ describe("useChat", () => {
 
     expect(result.current.metrics).toBeNull();
   });
+
+  describe("attachExternalTurn", () => {
+    it("rebuilds a turn from an external event stream without an agent", async () => {
+      const { result } = renderHook(() => useChat(undefined));
+
+      await act(async () => {
+        await result.current.attachExternalTurn(
+          createEventGenerator([
+            { type: "session_created", sessionId: "session-9" },
+            { type: "content_delta", delta: "Recovered " },
+            { type: "content_delta", delta: "answer" },
+            createExecutionCompleteEvent(),
+          ]),
+          { userText: "original question" },
+        );
+      });
+
+      const messages = result.current.messages;
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toMatchObject({ role: "user" });
+      expect(messages[0]?.parts[0]).toMatchObject({
+        type: "text",
+        text: "original question",
+      });
+      expect(messages[1]).toMatchObject({ role: "assistant" });
+      expect(messages[1]?.parts[0]).toMatchObject({
+        type: "text",
+        text: "Recovered answer",
+      });
+      expect(result.current.sessionId).toBe("session-9");
+      expect(result.current.status).toBe("idle");
+    });
+
+    it("settles back to idle when the stream ends without execution_complete (interrupted run)", async () => {
+      const { result } = renderHook(() => useChat(undefined));
+
+      await act(async () => {
+        await result.current.attachExternalTurn(
+          createEventGenerator([
+            { type: "content_delta", delta: "partial thought" },
+          ]),
+          { userText: "question" },
+        );
+      });
+
+      expect(result.current.status).toBe("idle");
+      const assistant = result.current.messages.find(
+        (m) => m.role === "assistant",
+      );
+      expect(assistant?.parts[0]).toMatchObject({
+        type: "text",
+        text: "partial thought",
+      });
+    });
+
+    it("does not attach while another turn is already streaming", async () => {
+      const { agent } = setupMockAgent();
+      let releaseTurn!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        releaseTurn = resolve;
+      });
+      (agent.chat as ReturnType<typeof vi.fn>).mockReturnValue(
+        (async function* () {
+          yield { type: "content_delta", delta: "busy" } as AgentEvent;
+          await gate;
+          yield createExecutionCompleteEvent();
+        })(),
+      );
+
+      const { result } = await renderUseChat(agent);
+
+      let sendPromise: Promise<void> | undefined;
+      await act(async () => {
+        sendPromise = result.current.sendMessage("Hello");
+        // Let the first delta land so the adapter is mid-stream.
+        await Promise.resolve();
+      });
+
+      const external = createEventGenerator([
+        { type: "content_delta", delta: "should not appear" },
+      ]);
+      await act(async () => {
+        await result.current.attachExternalTurn(external);
+      });
+      expect(external.return).toHaveBeenCalled();
+
+      releaseTurn();
+      await act(async () => {
+        await sendPromise;
+      });
+      const allText = JSON.stringify(result.current.messages);
+      expect(allText).not.toContain("should not appear");
+    });
+  });
 });

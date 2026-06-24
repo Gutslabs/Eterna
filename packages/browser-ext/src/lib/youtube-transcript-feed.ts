@@ -5,9 +5,11 @@
  * persistent current-page chip or a tab picked from the context menu), each
  * send automatically carries the NEXT 10-minute transcript window as an extra
  * context item. The already-sent window numbers are derived from the
- * conversation's message history (the chunk metadata is stored on each user
- * message), so the feed needs no separate cursor state and survives
- * conversation reloads.
+ * IN-MEMORY message history (chunk metadata on each user message) — no
+ * separate cursor state. Note: conversation storage strips context parts, so
+ * a restored conversation starts again from part 1; that matches reality,
+ * because restoring also starts a fresh agent session that hasn't seen the
+ * earlier parts.
  */
 
 import type { ContextItem } from "@aipexstudio/aipex-react/components/ai-elements/prompt-input";
@@ -19,6 +21,7 @@ import {
   type TranscriptWindow,
   type YoutubeTranscriptWindows,
 } from "@aipexstudio/browser-runtime/tools/youtube-transcript-chunks";
+import { CURRENT_PAGE_CONTEXT_ID } from "./context-ids";
 
 export const YOUTUBE_TRANSCRIPT_CONTEXT_KIND = "youtube-transcript";
 const CHUNK_FETCH_TIMEOUT_MS = 5000;
@@ -29,13 +32,25 @@ export interface YoutubeContextTarget {
   videoId: string;
 }
 
-export function findYoutubeContextTarget(
+/**
+ * All YouTube videos referenced by the attached contexts, deduped by video.
+ * The current-page chip is preferred first — its position in the composer
+ * array shifts between sends (the loader's refresh re-appends it), and
+ * ordering by raw array position made the feed alternate between videos.
+ */
+export function findYoutubeContextTargets(
   contexts: ContextItem[] | undefined,
-): YoutubeContextTarget | null {
+): YoutubeContextTarget[] {
   if (!contexts?.length) {
-    return null;
+    return [];
   }
-  for (const item of contexts) {
+  const ordered = [...contexts].sort(
+    (a, b) =>
+      Number(b.id === CURRENT_PAGE_CONTEXT_ID) -
+      Number(a.id === CURRENT_PAGE_CONTEXT_ID),
+  );
+  const targets: YoutubeContextTarget[] = [];
+  for (const item of ordered) {
     if (item.metadata?.kind === YOUTUBE_TRANSCRIPT_CONTEXT_KIND) {
       continue;
     }
@@ -45,16 +60,16 @@ export function findYoutubeContextTarget(
       continue;
     }
     const videoId = extractYoutubeVideoId(url);
-    if (!videoId) {
+    if (!videoId || targets.some((t) => t.videoId === videoId)) {
       continue;
     }
     const tabId =
       typeof item.metadata?.tabId === "number"
         ? item.metadata.tabId
         : undefined;
-    return { tabId, url, videoId };
+    targets.push({ tabId, url, videoId });
   }
-  return null;
+  return targets;
 }
 
 /**
@@ -166,37 +181,38 @@ export async function withYoutubeTranscriptChunk(
   messages: UIMessage[],
 ): Promise<ContextItem[] | undefined> {
   try {
-    const target = findYoutubeContextTarget(contexts);
-    if (!target) {
-      return contexts;
-    }
+    // Walk the candidates in preference order — when the first video's
+    // windows are all sent (or its fetch fails), the next attached video
+    // still gets fed instead of being silently skipped.
+    for (const target of findYoutubeContextTargets(contexts)) {
+      const tabId = await resolveTabId(target);
+      if (tabId === undefined) {
+        continue;
+      }
 
-    const tabId = await resolveTabId(target);
-    if (tabId === undefined) {
-      return contexts;
-    }
+      const transcript = await withTimeout(
+        getYoutubeTranscriptWindows(tabId, target.url),
+        CHUNK_FETCH_TIMEOUT_MS,
+      );
+      if (!transcript?.success || !transcript.windows.length) {
+        continue;
+      }
 
-    const transcript = await withTimeout(
-      getYoutubeTranscriptWindows(tabId, target.url),
-      CHUNK_FETCH_TIMEOUT_MS,
-    );
-    if (!transcript?.success || !transcript.windows.length) {
-      return contexts;
-    }
+      const part = nextTranscriptPart(
+        messages,
+        transcript.videoId ?? target.videoId,
+      );
+      const window = transcript.windows[part - 1];
+      if (!window) {
+        continue;
+      }
 
-    const part = nextTranscriptPart(
-      messages,
-      transcript.videoId ?? target.videoId,
-    );
-    const window = transcript.windows[part - 1];
-    if (!window) {
-      return contexts;
+      return [
+        ...(contexts ?? []),
+        buildTranscriptChunkContext(transcript, window, target.url),
+      ];
     }
-
-    return [
-      ...(contexts ?? []),
-      buildTranscriptChunkContext(transcript, window, target.url),
-    ];
+    return contexts;
   } catch {
     return contexts;
   }

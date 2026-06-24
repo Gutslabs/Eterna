@@ -3,17 +3,24 @@
  * Simple wrapper using browser-specific hooks
  */
 
+import type { AIPex, AppSettings } from "@aipexstudio/aipex-core";
 import ChatBot from "@aipexstudio/aipex-react/components/chatbot";
 import { ErrorBoundary } from "@aipexstudio/aipex-react/components/error/ErrorBoundary";
 import type { InterventionMode } from "@aipexstudio/aipex-react/components/intervention";
-import { useAgent, useChatConfig } from "@aipexstudio/aipex-react/hooks";
+import { useChatConfig } from "@aipexstudio/aipex-react/hooks";
 import { I18nProvider } from "@aipexstudio/aipex-react/i18n/context";
 import type { Language } from "@aipexstudio/aipex-react/i18n/types";
 import { ThemeProvider } from "@aipexstudio/aipex-react/theme/context";
 import type { Theme } from "@aipexstudio/aipex-react/theme/types";
 import type { AuthCheckResult } from "@aipexstudio/aipex-react/types";
 import { ChromeStorageAdapter } from "@aipexstudio/browser-runtime";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactDOM from "react-dom/client";
 import { AuthProvider, useAuth } from "../../auth";
 import { chromeStorageAdapter } from "../../hooks";
@@ -24,13 +31,6 @@ import {
   isGeminiGatewayModel,
   isXaiGatewayModel,
 } from "../../lib/ai-provider";
-import {
-  BROWSER_AGENT_CONFIG,
-  useBrowserContextProviders,
-  useBrowserModelFactory,
-  useBrowserStorage,
-  useBrowserTools,
-} from "../../lib/browser-agent-config";
 import { BrowserChatHeader } from "../../lib/browser-chat-header";
 import { BrowserChatInputArea } from "../../lib/browser-chat-input-area";
 import { BrowserContextLoader } from "../../lib/browser-context-loader";
@@ -42,7 +42,9 @@ import { ChatInputToolbar } from "../../lib/chat-input-toolbar";
 import { InputModeProvider } from "../../lib/input-mode-context";
 import { InterventionModeProvider } from "../../lib/intervention-mode-context";
 import { InterventionUI } from "../../lib/intervention-ui";
+import { ParallelAgentToggle } from "../../lib/parallel-agent-toggle";
 import { PromptLibrary } from "../../lib/prompt-library";
+import { getRemoteBrowserAgent } from "../../lib/remote-agent";
 import { SelectionAutoSend } from "../../lib/selection-autosend";
 import { suppressStaleContextErrors } from "../../lib/suppress-stale-errors";
 
@@ -292,26 +294,45 @@ async function offlineBackendGuide(
   return null;
 }
 
+const NOT_CONFIGURED_ERROR_MESSAGE = "API token or model not configured";
+
+/**
+ * The agent itself runs in the background service worker (chat-host); the
+ * UI only validates that the configuration is complete enough to send.
+ */
+function validateAgentConfig(settings: AppSettings): Error | undefined {
+  const isByok = Boolean(settings.byokEnabled && settings.aiToken?.trim());
+  if (isByok && !settings.aiModel?.trim()) {
+    return new Error(NOT_CONFIGURED_ERROR_MESSAGE);
+  }
+  return undefined;
+}
+
 function ChatApp() {
   const { settings, isLoading } = useChatConfig({
     storageAdapter: chromeStorageAdapter,
     autoLoad: true,
   });
 
-  const storage = useBrowserStorage();
-  const modelFactory = useBrowserModelFactory();
-  const contextProviders = useBrowserContextProviders();
-  const tools = useBrowserTools();
-
-  const { agent, error } = useAgent({
-    settings,
-    isLoading,
-    modelFactory,
-    storage,
-    contextProviders,
-    tools,
-    ...BROWSER_AGENT_CONFIG,
-  });
+  // Port-backed stand-in for the AIPex agent — the run loop lives in the
+  // background service worker so a turn survives host-page refresh.
+  // A fresh wrapper identity per model keeps useChat's "agent changed →
+  // reset session" semantics from the local-agent days.
+  const aiModel = settings.aiModel;
+  const agent = useMemo(() => {
+    if (isLoading) return undefined;
+    void aiModel;
+    const client = getRemoteBrowserAgent();
+    return {
+      chat: client.chat.bind(client),
+      rollbackLastAssistantTurn: client.rollbackLastAssistantTurn.bind(client),
+      getConversationManager: client.getConversationManager.bind(client),
+    } as unknown as AIPex;
+  }, [isLoading, aiModel]);
+  const error = useMemo(
+    () => (isLoading ? undefined : validateAgentConfig(settings)),
+    [isLoading, settings],
+  );
 
   const { login } = useAuth();
   const pendingInput = usePendingPrompt();
@@ -399,6 +420,7 @@ function ChatApp() {
             ),
             messageActions: (props) => <BrowserMessageActions {...props} />,
             inputToolbar: (props) => <ChatInputToolbar {...props} />,
+            composerTools: () => <ParallelAgentToggle />,
             inputHeader: () => <PromptLibrary />,
             promptExtras: () => <BrowserContextLoader />,
             onLogin: login,

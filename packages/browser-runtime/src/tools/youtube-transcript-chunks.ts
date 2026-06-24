@@ -28,6 +28,21 @@ const WINDOW_TEXT_CHAR_LIMIT = 16000;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const ERROR_CACHE_TTL_MS = 2 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 4;
+// Hard deadline on the in-page fetch: a frozen/discarded tab can park the
+// injected promise forever, which would wedge the inFlight entry (and with
+// it the whole transcript feature) until the sidebar reloads.
+const FETCH_DEADLINE_MS = 30_000;
+
+function withDeadline<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallback: T,
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
 
 export function extractYoutubeVideoId(url: string): string | null {
   try {
@@ -204,7 +219,11 @@ export async function getYoutubeTranscriptWindows(
 
   const fetchPromise = (async (): Promise<YoutubeTranscriptWindows> => {
     try {
-      const fetched = await fetchYoutubeTranscriptForTab(tabId);
+      const fetched = await withDeadline(
+        fetchYoutubeTranscriptForTab(tabId),
+        FETCH_DEADLINE_MS,
+        { success: false, error: "Transcript fetch timed out." },
+      );
       if (!fetched.success || !fetched.segments) {
         return {
           success: false,

@@ -106,6 +106,10 @@ export function toStorageFormat(
         switch (part.type) {
           case "text":
             return { type: "text", text: part.text };
+          case "reasoning":
+            // Persist as reasoning so restored conversations keep the
+            // thought on the activity rail instead of in a chat bubble.
+            return { type: "reasoning", text: part.text };
           case "file":
             // Map file to image (store URL as imageData)
             return {
@@ -160,11 +164,7 @@ export function toStorageFormat(
             if (part.type === "context") {
               return [];
             }
-            // For source-url, reasoning - store as text
-            if ("text" in part) {
-              return { type: "text", text: part.text };
-            }
-            // Fallback: store as text with type info
+            // Fallback (source-url, future parts): store as text with type info
             return { type: "text", text: `[${part.type}]` };
         }
       },
@@ -250,6 +250,8 @@ export function fromStorageFormat(
       switch (part.type) {
         case "text":
           return { type: "text", text: part.text };
+        case "reasoning":
+          return { type: "reasoning", text: part.text };
         case "image":
           // Map image back to file
           return {

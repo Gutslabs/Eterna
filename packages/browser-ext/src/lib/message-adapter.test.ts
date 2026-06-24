@@ -174,6 +174,32 @@ describe("message-adapter", () => {
   });
 
   describe("round-trip: toStorageFormat -> fromStorageFormat", () => {
+    it("should keep reasoning parts as reasoning, not text", () => {
+      const original = [
+        {
+          id: "msg-1",
+          role: "assistant" as const,
+          parts: [
+            { type: "reasoning" as const, text: "I should load the skill." },
+            { type: "text" as const, text: "Here is the answer." },
+          ],
+          timestamp: Date.now(),
+        },
+      ];
+
+      const stored = toStorageFormat(original as any);
+      expect(stored[0]!.parts).toEqual([
+        { type: "reasoning", text: "I should load the skill." },
+        { type: "text", text: "Here is the answer." },
+      ]);
+
+      const restored = fromStorageFormat(stored);
+      expect(restored[0]!.parts).toEqual([
+        { type: "reasoning", text: "I should load the skill." },
+        { type: "text", text: "Here is the answer." },
+      ]);
+    });
+
     it("should preserve screenshotUid through round-trip", () => {
       const original = [
         {

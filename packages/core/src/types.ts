@@ -124,6 +124,7 @@ export type AgentEvent =
   | { type: "session_created"; sessionId: string }
   | { type: "session_resumed"; sessionId: string; itemCount: number }
   | { type: "content_delta"; delta: string }
+  | { type: "reasoning_delta"; delta: string }
   | { type: "tool_call_args_streaming_start"; toolName: string }
   | {
       type: "tool_call_args_streaming_complete";

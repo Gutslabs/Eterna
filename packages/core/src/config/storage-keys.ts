@@ -6,6 +6,8 @@ export const STORAGE_KEYS = {
   SETTINGS: `${PREFIX}settings`,
   HOST_ACCESS_CONFIG: `${PREFIX}host_access_config`,
   AUTOMATION_MODE: `${PREFIX}automation_mode`,
+  /** User toggle: fan research out to parallel background subagents. */
+  PARALLEL_AGENT: `${PREFIX}parallel_agent`,
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

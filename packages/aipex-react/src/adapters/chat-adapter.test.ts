@@ -264,6 +264,56 @@ describe("ChatAdapter", () => {
       expect(adapter.getStatus()).toBe("streaming");
     });
 
+    it("should append reasoning deltas into a single reasoning part", () => {
+      adapter.processEvent({ type: "reasoning_delta", delta: "Let me " });
+      adapter.processEvent({ type: "reasoning_delta", delta: "think." });
+
+      const messages = adapter.getMessages();
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.parts).toEqual([
+        { type: "reasoning", text: "Let me think." },
+      ]);
+      expect(adapter.getStatus()).toBe("streaming");
+    });
+
+    it("should keep reasoning and following text as separate parts in the same message", () => {
+      adapter.processEvent({ type: "reasoning_delta", delta: "Thinking…" });
+      adapter.processEvent({ type: "content_delta", delta: "The answer." });
+
+      const messages = adapter.getMessages();
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.parts).toEqual([
+        { type: "reasoning", text: "Thinking…" },
+        { type: "text", text: "The answer." },
+      ]);
+    });
+
+    it("should start a new assistant message for reasoning that follows tool calls", () => {
+      adapter.processEvent({ type: "reasoning_delta", delta: "Plan first." });
+      adapter.processEvent({
+        type: "tool_call_start",
+        toolName: "search",
+        params: { q: "ts" },
+      });
+      adapter.processEvent({
+        type: "tool_call_complete",
+        toolName: "search",
+        result: { ok: true },
+      });
+      adapter.processEvent({ type: "reasoning_delta", delta: "Now reflect." });
+
+      const messages = adapter.getMessages();
+      expect(messages).toHaveLength(2);
+      expect(messages[0]?.parts[0]).toEqual({
+        type: "reasoning",
+        text: "Plan first.",
+      });
+      expect(messages[0]?.parts.some((p) => p.type === "tool")).toBe(true);
+      expect(messages[1]?.parts).toEqual([
+        { type: "reasoning", text: "Now reflect." },
+      ]);
+    });
+
     it("should create a pending tool call on tool_call_args_streaming_start", () => {
       adapter.processEvent({
         type: "tool_call_args_streaming_start",
@@ -987,5 +1037,60 @@ describe("visible error notices", () => {
       .flatMap((m) => m.parts)
       .filter((p) => p.type === "text" && p.text.startsWith("⚠️"));
     expect(all).toHaveLength(1);
+  });
+});
+
+describe("removeLastAssistantTurn", () => {
+  let adapter: ChatAdapter;
+
+  beforeEach(() => {
+    adapter = createChatAdapter();
+  });
+
+  it("removes ALL trailing assistant messages, not just the last one", () => {
+    adapter.addUserMessage("soru");
+    // Tool batch message…
+    adapter.processEvent({
+      type: "tool_call_start",
+      toolName: "search",
+      params: {},
+    });
+    adapter.processEvent({
+      type: "tool_call_complete",
+      toolName: "search",
+      result: { ok: true },
+    });
+    // …then text after tools starts a SECOND assistant message.
+    adapter.processEvent({ type: "content_delta", delta: "cevap" });
+    expect(adapter.getMessages()).toHaveLength(3);
+
+    expect(adapter.removeLastAssistantTurn()).toBe(true);
+
+    const remaining = adapter.getMessages();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.role).toBe("user");
+  });
+
+  it("stops at the previous turn's user message", () => {
+    adapter.addUserMessage("ilk");
+    adapter.processEvent({ type: "content_delta", delta: "ilk cevap" });
+    adapter.processEvent({
+      type: "execution_complete",
+      finalOutput: "ilk cevap",
+      metrics: { totalTokens: 0, inputTokens: 0, outputTokens: 0 } as never,
+    });
+    adapter.addUserMessage("ikinci");
+    adapter.processEvent({ type: "content_delta", delta: "ikinci cevap" });
+
+    expect(adapter.removeLastAssistantTurn()).toBe(true);
+
+    const roles = adapter.getMessages().map((m) => m.role);
+    expect(roles).toEqual(["user", "assistant", "user"]);
+  });
+
+  it("returns false when there is no trailing assistant message", () => {
+    adapter.addUserMessage("soru");
+    expect(adapter.removeLastAssistantTurn()).toBe(false);
+    expect(adapter.getMessages()).toHaveLength(1);
   });
 });

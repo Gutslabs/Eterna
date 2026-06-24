@@ -11,6 +11,19 @@
       body {
         background: #181817;
       }
+      /* Opened as a standalone tab (data-standalone set in index.tsx): center
+         the chat as a max-width column so it reads like a normal chat page
+         instead of stretching across the whole tab. The embedded sidebar
+         iframe is unaffected. */
+      html[data-standalone] body {
+        display: flex;
+        justify-content: center;
+      }
+      html[data-standalone] #root {
+        width: 100%;
+        max-width: 860px;
+        height: 100vh;
+      }
     </style>
     <link rel="stylesheet" href="./pages/tailwind.css" />
   </head>

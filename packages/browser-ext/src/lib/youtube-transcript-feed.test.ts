@@ -2,16 +2,16 @@ import type { UIMessage } from "@aipexstudio/aipex-react/types";
 import { describe, expect, it } from "vitest";
 import {
   buildTranscriptChunkContext,
-  findYoutubeContextTarget,
+  findYoutubeContextTargets,
   nextTranscriptPart,
   YOUTUBE_TRANSCRIPT_CONTEXT_KIND,
 } from "./youtube-transcript-feed";
 
 const VIDEO_URL = "https://www.youtube.com/watch?v=abc123";
 
-function pageContext(url: string, tabId?: number) {
+function pageContext(url: string, tabId?: number, id = "aipex-current-page") {
   return {
-    id: "aipex-current-page",
+    id,
     type: "page" as const,
     label: "Some page",
     value: `URL: ${url}`,
@@ -36,27 +36,50 @@ function chunkMessage(videoId: string, part: number): UIMessage {
   };
 }
 
-describe("findYoutubeContextTarget", () => {
-  it("finds a YouTube video among attached contexts", () => {
-    const target = findYoutubeContextTarget([
+describe("findYoutubeContextTargets", () => {
+  it("finds YouTube videos among attached contexts", () => {
+    const targets = findYoutubeContextTargets([
       pageContext("https://example.com"),
       pageContext(VIDEO_URL, 42),
     ]);
 
-    expect(target).toEqual({ tabId: 42, url: VIDEO_URL, videoId: "abc123" });
+    expect(targets).toEqual([{ tabId: 42, url: VIDEO_URL, videoId: "abc123" }]);
   });
 
-  it("returns null without contexts or without a YouTube video", () => {
-    expect(findYoutubeContextTarget(undefined)).toBeNull();
-    expect(findYoutubeContextTarget([])).toBeNull();
+  it("prefers the current-page chip regardless of composer order", () => {
+    const otherVideo = pageContext(
+      "https://www.youtube.com/watch?v=tabVid",
+      7,
+      "tab-7",
+    );
+    const targets = findYoutubeContextTargets([
+      otherVideo,
+      pageContext(VIDEO_URL, 42),
+    ]);
+
+    expect(targets.map((t) => t.videoId)).toEqual(["abc123", "tabVid"]);
+  });
+
+  it("dedupes by video id", () => {
+    const targets = findYoutubeContextTargets([
+      pageContext(VIDEO_URL, 42),
+      pageContext(VIDEO_URL, 42, "tab-dup"),
+    ]);
+
+    expect(targets).toHaveLength(1);
+  });
+
+  it("returns empty without contexts or without a YouTube video", () => {
+    expect(findYoutubeContextTargets(undefined)).toEqual([]);
+    expect(findYoutubeContextTargets([])).toEqual([]);
     expect(
-      findYoutubeContextTarget([pageContext("https://example.com", 1)]),
-    ).toBeNull();
+      findYoutubeContextTargets([pageContext("https://example.com", 1)]),
+    ).toEqual([]);
     expect(
-      findYoutubeContextTarget([
+      findYoutubeContextTargets([
         pageContext("https://www.youtube.com/feed/library", 1),
       ]),
-    ).toBeNull();
+    ).toEqual([]);
   });
 
   it("ignores previously injected transcript chunks", () => {
@@ -72,7 +95,7 @@ describe("findYoutubeContextTarget", () => {
       },
     };
 
-    expect(findYoutubeContextTarget([chunk])).toBeNull();
+    expect(findYoutubeContextTargets([chunk])).toEqual([]);
   });
 });
 

@@ -48,12 +48,21 @@ export function BrowserChatInputArea(props: InputAreaProps) {
       files?: MessageAttachment[],
       contexts?: ContextItem[],
     ) => {
-      // The composer hides the page chip on an empty conversation (the
+      // The composer hides the page chip on an EMPTY conversation (the
       // welcome page-card represents it) — guarantee the page context rides
-      // along anyway. Must run before the transcript chunk step, which finds
-      // the YouTube video through this context's url metadata.
+      // along for that first send. Must run before the transcript chunk
+      // step, which finds the YouTube video through this context's url
+      // metadata. Once the conversation has messages the chip is
+      // user-controlled: a missing chip means the user removed it with X,
+      // and silently re-attaching the page would override that choice.
       let withPage = contexts;
-      if (!contexts?.some((item) => item.id === CURRENT_PAGE_CONTEXT_ID)) {
+      const conversationEmpty = !messagesRef.current.some(
+        (m) => m.role !== "system",
+      );
+      if (
+        conversationEmpty &&
+        !contexts?.some((item) => item.id === CURRENT_PAGE_CONTEXT_ID)
+      ) {
         const page = await readActivePageContext().catch(() => null);
         if (page) {
           withPage = [page, ...(contexts ?? [])];

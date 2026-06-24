@@ -254,7 +254,9 @@ export function DefaultMessageItem({
                 <Message from={message.role as "user" | "assistant" | "system"}>
                   <MessageContent>
                     <StreamingResponse
-                      animate={message.role === "assistant" && isLast}
+                      animate={
+                        message.role === "assistant" && isLast && isStreaming
+                      }
                     >
                       {processedText}
                     </StreamingResponse>

@@ -1,14 +1,14 @@
-<p align="center"><a href="https://claudechrome.com"><img alt="AIPex Browser Automation" src="https://github.com/user-attachments/assets/039768c0-1765-4a98-b020-57955e4a224a" width="100%" />
+<p align="center"><a href="https://claudechrome.com"><img alt="Eterna Browser Automation" src="https://github.com/user-attachments/assets/039768c0-1765-4a98-b020-57955e4a224a" width="100%" />
 </a></p>
 
 <strong><p align="center">Ihr Browser funktioniert bereits!</p></strong>
 
 
 <p align="center">
-  <a href="https://chromewebstore.google.com/detail/aipex-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar">
+  <a href="https://chromewebstore.google.com/detail/eterna-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar">
     <img src="https://img.shields.io/badge/Chrome%20Web%20Store-Installieren-4285F4?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Chrome Web Store">
   </a>
-  <a href="https://microsoftedge.microsoft.com/addons/detail/aipex/fkgfflijckgpphikbceckjbofkicfnfa">
+  <a href="https://microsoftedge.microsoft.com/addons/detail/eterna/fkgfflijckgpphikbceckjbofkicfnfa">
     <img src="https://img.shields.io/badge/Edge%20Add--ons-Installieren-0078D4?style=for-the-badge&logo=microsoft-edge&logoColor=white" alt="Edge Add-ons">
   </a>
 </p>
@@ -18,7 +18,7 @@
   <br>
   <a href="https://discord.gg/sfZC3G5qfe"><img src="https://img.shields.io/badge/-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://x.com/weikangzhang3"><img src="https://img.shields.io/badge/-000000?style=for-the-badge&logo=x&logoColor=white" alt="X/Twitter"></a>
-  <a href="https://www.youtube.com/@aipex-chrome-extension"><img src="https://img.shields.io/badge/-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
+  <a href="https://www.youtube.com/@eterna-chrome-extension"><img src="https://img.shields.io/badge/-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
   <br>
   <br>
   <a href="README.md">English</a> | <a href="README.zh-CN.md">中文</a> | <a href="README.de.md">Deutsch</a> | <a href="README.es.md">Español</a> | <a href="README.fr.md">Français</a> | <a href="README.ja.md">日本語</a> | <a href="README.ko.md">한국어</a> | <a href="README.pt.md">Português</a> | <a href="README.ru.md">Русский</a>
@@ -26,12 +26,12 @@
 
 <!-- TODO: Add a hero GIF here showing the core automation flow -->
 <!-- <p align="center">
-  <img src="assets/demo.gif" alt="AIPex Demo" width="600">
+  <img src="assets/demo.gif" alt="Eterna Demo" width="600">
 </p> -->
 
 ---
 
-**AIPex** — Ein Open-Source-Browser-Agent, der in Ihrem vorhandenen Browser lebt.
+**Eterna** — Ein Open-Source-Browser-Agent, der in Ihrem vorhandenen Browser lebt.
 
 - **Null Migration**: Kein neuer Browser zu installieren. Kein neuer Arbeitsablauf zu lernen.
 - **Open Source**: MIT-lizenziert. Völlig transparent, überprüfbar und erweiterbar.
@@ -48,24 +48,24 @@ Jedes Browser-Automatisierungstool verlangt von Ihnen:
 
 **Wir haben gefragt: Warum kann Automatisierung nicht einfach in dem Browser laufen, den Sie bereits verwenden?**
 
-AIPex ist die Antwort. Installieren Sie die Erweiterung, bringen Sie Ihren eigenen API-Schlüssel mit und automatisieren Sie alles — genau dort, wo Sie bereits arbeiten.
+Eterna ist die Antwort. Installieren Sie die Erweiterung, bringen Sie Ihren eigenen API-Schlüssel mit und automatisieren Sie alles — genau dort, wo Sie bereits arbeiten.
 
 ---
 
 ## Schnellstart
 
-1. **Installieren** — [Chrome Web Store](https://chromewebstore.google.com/detail/aipex-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar) oder [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/aipex/fkgfflijckgpphikbceckjbofkicfnfa)
-2. **Öffnen** — Klicken Sie auf das AIPex-Symbol
+1. **Installieren** — [Chrome Web Store](https://chromewebstore.google.com/detail/eterna-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar) oder [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/eterna/fkgfflijckgpphikbceckjbofkicfnfa)
+2. **Öffnen** — Klicken Sie auf das Eterna-Symbol
 3. **Automatisieren** — Geben Sie ein oder sprechen Sie, was Sie tun möchten
 
 ---
 
 ## Verwendung mit KI-Coding-Agenten (MCP)
 
-AIPex unterstützt jetzt das [Model Context Protocol (MCP)](https://modelcontextprotocol.io), sodass KI-Agenten wie Cursor, Claude Code und VS Code Copilot Ihren Browser direkt steuern können.
+Eterna unterstützt jetzt das [Model Context Protocol (MCP)](https://modelcontextprotocol.io), sodass KI-Agenten wie Cursor, Claude Code und VS Code Copilot Ihren Browser direkt steuern können.
 
 ```
-AI Agent ──stdio──▶ aipex-mcp-bridge ──WebSocket──▶ AIPex Extension ──▶ Browser
+AI Agent ──stdio──▶ eterna-mcp-bridge ──WebSocket──▶ Eterna Extension ──▶ Browser
 ```
 
 ### Schritt 1: Agenten konfigurieren
@@ -75,9 +75,9 @@ AI Agent ──stdio──▶ aipex-mcp-bridge ──WebSocket──▶ AIPex Ex
 ```json
 {
   "mcpServers": {
-    "aipex-browser": {
+    "eterna-browser": {
       "command": "npx",
-      "args": ["-y", "aipex-mcp-bridge"]
+      "args": ["-y", "eterna-mcp-bridge"]
     }
   }
 }
@@ -86,7 +86,7 @@ AI Agent ──stdio──▶ aipex-mcp-bridge ──WebSocket──▶ AIPex Ex
 **Claude Code**:
 
 ```bash
-claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
+claude mcp add eterna-browser -- npx -y eterna-mcp-bridge
 ```
 
 **VS Code Copilot** (`.vscode/mcp.json`):
@@ -94,9 +94,9 @@ claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
 ```json
 {
   "servers": {
-    "aipex-browser": {
+    "eterna-browser": {
       "command": "npx",
-      "args": ["-y", "aipex-mcp-bridge"]
+      "args": ["-y", "eterna-mcp-bridge"]
     }
   }
 }
@@ -104,7 +104,7 @@ claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
 
 ### Schritt 2: Erweiterung verbinden
 
-1. Chrome öffnen → AIPex-Symbol → **Optionen**
+1. Chrome öffnen → Eterna-Symbol → **Optionen**
 2. WebSocket-URL auf `ws://localhost:9223` setzen
 3. Auf **Verbinden** klicken
 
@@ -114,7 +114,7 @@ Ihr Agent verfügt jetzt über 30+ Browser-Automatisierungstools via MCP. Siehe 
 
 ## Skill
 
-AIPex liefert ein **`aipex-browser`**-Skill — ein sofort einsatzbereites Skill-Paket für Agenten, die das Skill-Protokoll unterstützen (wie [Claude Code](https://claude.ai/code) und [OpenClaw](https://openclaw.dev)-kompatible Runtimes).
+Eterna liefert ein **`eterna-browser`**-Skill — ein sofort einsatzbereites Skill-Paket für Agenten, die das Skill-Protokoll unterstützen (wie [Claude Code](https://claude.ai/code) und [OpenClaw](https://openclaw.dev)-kompatible Runtimes).
 
 Das Skill enthält eine Werkzeugstrategie, vollständige Parameterschemata für alle 30+ Browser-Tools und gängige Automatisierungsmuster — sodass der Agent den Browser sofort effizient steuern kann.
 
@@ -142,11 +142,11 @@ https://github.com/user-attachments/assets/ba454715-c759-41df-bf87-e835f76be365
 
 ---
 
-## Wie schneidet AIPex ab?
+## Wie schneidet Eterna ab?
 
 *Warum einen neuen Browser installieren, wenn Sie den bereits vorhandenen automatisieren können?*
 
-| Feature | AIPex | ChatGPT Atlas | Dia/Comet | Manus |
+| Feature | Eterna | ChatGPT Atlas | Dia/Comet | Manus |
 |---------|-------|---------------|-----------|-------|
 | **Browser-Migration** | Keine | Erforderlich | Erforderlich | Keine |
 | **Preis** | Kostenlos | Kostenpflichtig | Kostenpflichtig | Kostenpflichtig |
@@ -164,24 +164,24 @@ Wir lieben Beiträge! Siehe [DEVELOPMENT.md](DEVELOPMENT.md) für Einrichtungsan
 
 ## Mitwirkende
 
-<a href="https://github.com/buttercannfly/AIPex/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=buttercannfly/AIPex" />
+<a href="https://github.com/Gutslabs/Eterna/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Gutslabs/Eterna" />
 </a>
 
 ---
 
 ## Sternverlauf
 
-[![Star History Chart](https://api.star-history.com/svg?repos=buttercannfly/AIPex&type=Date)](https://star-history.com/#buttercannfly/AIPex&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Gutslabs/Eterna&type=Date)](https://star-history.com/#Gutslabs/Eterna&Date)
 
 ---
 
 <p align="center">
-  <strong>Mit ❤️ vom AIPex-Team gemacht</strong>
+  <strong>Mit ❤️ vom Eterna-Team gemacht</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/buttercannfly/AIPex"><img src="https://img.shields.io/badge/GitHub-100000?logo=github&logoColor=white" alt="GitHub"></a>
-  <a href="https://chromewebstore.google.com/detail/aipex-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar"><img src="https://img.shields.io/badge/Chrome-4285F4?logo=google-chrome&logoColor=white" alt="Chrome"></a>
-  <a href="https://microsoftedge.microsoft.com/addons/detail/aipex/fkgfflijckgpphikbceckjbofkicfnfa"><img src="https://img.shields.io/badge/Edge-0078D4?logo=microsoft-edge&logoColor=white" alt="Edge"></a>
+  <a href="https://github.com/Gutslabs/Eterna"><img src="https://img.shields.io/badge/GitHub-100000?logo=github&logoColor=white" alt="GitHub"></a>
+  <a href="https://chromewebstore.google.com/detail/eterna-%E2%80%94%E2%80%94-tab-history-mana/iglkpadagfelcpmiidndgjgafpdifnke?hl=zh-CN&utm_source=ext_sidebar"><img src="https://img.shields.io/badge/Chrome-4285F4?logo=google-chrome&logoColor=white" alt="Chrome"></a>
+  <a href="https://microsoftedge.microsoft.com/addons/detail/eterna/fkgfflijckgpphikbceckjbofkicfnfa"><img src="https://img.shields.io/badge/Edge-0078D4?logo=microsoft-edge&logoColor=white" alt="Edge"></a>
 </p>

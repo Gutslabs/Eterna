@@ -100,11 +100,16 @@ describe("ConversationStorage Integration Tests", () => {
       };
       mockLoad.mockResolvedValue(savedConversation);
 
+      mockSave.mockClear();
       const retrieved = await storage.getConversation(conversationId);
 
       expect(retrieved).toBeTruthy();
       expect(retrieved?.id).toBe(conversationId);
       expect(retrieved?.messages).toHaveLength(2);
+      // Pure read: opening a conversation must not rewrite it (an updatedAt
+      // bump on access jumped merely-viewed chats to the top of history).
+      expect(mockSave).not.toHaveBeenCalled();
+      expect(retrieved?.updatedAt).toBe(savedConversation.updatedAt);
 
       // 3. Update the conversation
       const updatedMessages = [

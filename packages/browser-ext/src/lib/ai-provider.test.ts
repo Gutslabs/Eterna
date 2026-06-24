@@ -3,7 +3,9 @@ import {
   catgptGatewayFetch,
   createAIProvider,
   createEmptyToolArgsFinalizer,
+  geminiGatewayFetch,
   startFreshGatewayThread,
+  supportsParallelSubagents,
 } from "./ai-provider";
 
 // Provide minimal mock for import.meta.env
@@ -470,6 +472,75 @@ describe("createEmptyToolArgsFinalizer", () => {
   });
 });
 
+describe("supportsParallelSubagents", () => {
+  it("is true for gemini, grok and codex models", () => {
+    expect(supportsParallelSubagents("gemini-3.1-pro-preview")).toBe(true);
+    expect(supportsParallelSubagents("grok-4.3")).toBe(true);
+    expect(supportsParallelSubagents("gpt-5.5")).toBe(true);
+  });
+
+  it("is false for the single-session web gateways", () => {
+    expect(supportsParallelSubagents("catgpt-browser::GPT-5.5")).toBe(false);
+    expect(supportsParallelSubagents("claude-browser::Opus 4.8|High")).toBe(
+      false,
+    );
+  });
+
+  it("is false for unknown or undefined models", () => {
+    expect(supportsParallelSubagents(undefined)).toBe(false);
+    expect(supportsParallelSubagents("some-byok-model")).toBe(false);
+  });
+});
+
+describe("geminiGatewayFetch reasoning_effort injection", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const send = async (body: unknown) =>
+    geminiGatewayFetch("http://localhost:8317/v1/chat/completions", {
+      method: "POST",
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    });
+
+  const lastRequestBody = () => {
+    const call = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    return JSON.parse((call?.[1] as RequestInit).body as string);
+  };
+
+  it("injects reasoning_effort for gemini models", async () => {
+    await send({ model: "gemini-3.1-pro-preview", messages: [] });
+    expect(lastRequestBody().reasoning_effort).toBe("low");
+  });
+
+  it("leaves grok models on the shared endpoint untouched", async () => {
+    await send({ model: "grok-4.3", messages: [] });
+    expect(lastRequestBody().reasoning_effort).toBeUndefined();
+  });
+
+  it("does not override an explicit reasoning_effort", async () => {
+    await send({
+      model: "gemini-2.5-pro",
+      messages: [],
+      reasoning_effort: "high",
+    });
+    expect(lastRequestBody().reasoning_effort).toBe("high");
+  });
+
+  it("passes non-JSON bodies through unchanged", async () => {
+    await send("not json");
+    const call = fetchMock.mock.calls[0];
+    expect((call?.[1] as RequestInit).body).toBe("not json");
+  });
+});
+
 describe("catgptGatewayFetch conversation routing", () => {
   const completionsResponse = () =>
     new Response(
@@ -562,7 +633,7 @@ describe("catgptGatewayFetch conversation routing", () => {
     secondChatId = body.conversation_id;
   });
 
-  it("detects switching to a stored conversation and replays recent turns", async () => {
+  it("mints a new conversation when the history fingerprint changes, still sending only the last user message", async () => {
     await send({
       model: "catgpt-browser::GPT-5.5",
       messages: [
@@ -575,11 +646,24 @@ describe("catgptGatewayFetch conversation routing", () => {
 
     const body = lastRequestBody();
     expect(body.conversation_id).not.toBe(secondChatId);
-    expect(body.messages).toEqual([
-      userMsg("eski sohbetin ilk mesajı"),
-      assistantMsg("eski cevap"),
-      userMsg("kaldığımız yerden devam"),
-    ]);
+    expect(body.messages).toEqual([userMsg("kaldığımız yerden devam")]);
+  });
+
+  it("reuses the same conversation when the SDK retries a first message", async () => {
+    const freshBody = {
+      model: "catgpt-browser::GPT-5.5",
+      messages: [
+        { role: "system", content: "big system prompt" },
+        userMsg("retry edilecek mesaj"),
+      ],
+    };
+    await send(freshBody);
+    const firstId = lastRequestBody().conversation_id;
+
+    // SDK retry re-invokes the fetch with the identical body — a second
+    // thread must NOT be opened.
+    await send(freshBody);
+    expect(lastRequestBody().conversation_id).toBe(firstId);
   });
 
   it("routes claude-browser models to the Claude gateway port", async () => {

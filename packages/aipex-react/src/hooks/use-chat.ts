@@ -95,6 +95,15 @@ export interface UseChatReturn {
   regenerate: () => Promise<void>;
   /** Set messages directly */
   setMessages: (messages: UIMessage[]) => void;
+  /**
+   * Attach an externally produced AgentEvent stream as the current turn —
+   * used to re-join a run that kept executing elsewhere (e.g. a background
+   * service worker) after this UI was torn down and recreated.
+   */
+  attachExternalTurn: (
+    events: AsyncGenerator<AgentEvent>,
+    options?: { userText?: string },
+  ) => Promise<void>;
 }
 
 /**
@@ -148,6 +157,9 @@ export function useChat(
   configRef.current = config;
 
   const activeGeneratorRef = useRef<AsyncGenerator<AgentEvent> | null>(null);
+  // Bumped by interrupt/reset; runs captured before an await compare against
+  // it afterwards so a stopped run can't start its generator anyway.
+  const runEpochRef = useRef(0);
   const prevAgentRef = useRef<AIPex | undefined>(agent);
 
   // When the agent instance changes (e.g. model switch), reset the sessionId
@@ -323,6 +335,7 @@ export function useChat(
       const userMessage = adapter.addUserMessage(text, files, contexts);
       handlersRef.current?.onMessageSent?.(userMessage);
       adapter.setStatus("submitted");
+      const epoch = runEpochRef.current;
 
       // Convert ContextItem to core Context type
       const coreContexts: Context[] | undefined = contexts?.map((ctx) => ({
@@ -339,6 +352,12 @@ export function useChat(
         files && files.length > 0
           ? await attachmentsToImageInputs(files)
           : undefined;
+
+      // Stop pressed during the attachment conversion above — don't start
+      // the generator the user already cancelled.
+      if (epoch !== runEpochRef.current) {
+        return;
+      }
 
       const events = agent.chat(text, {
         sessionId: sessionId ?? undefined,
@@ -383,6 +402,9 @@ export function useChat(
 
   // Interrupt current operation
   const interrupt = useCallback(async (): Promise<void> => {
+    // Invalidate runs that are still in a pre-generator await (attachment
+    // conversion, session rollback) — they check the epoch before starting.
+    runEpochRef.current += 1;
     const generator = activeGeneratorRef.current;
     if (generator && typeof generator.return === "function") {
       await generator.return(undefined);
@@ -396,10 +418,18 @@ export function useChat(
 
   // Reset chat
   const reset = useCallback((): void => {
+    // Stop any in-flight run first — otherwise its generator keeps streaming
+    // into the freshly cleared adapter and the old response "resurrects" as
+    // an orphan bubble in the new chat.
+    runEpochRef.current += 1;
+    const generator = activeGeneratorRef.current;
+    if (generator && typeof generator.return === "function") {
+      void generator.return(undefined);
+    }
+    activeGeneratorRef.current = null;
     if (sessionId && agent) {
       void agent.getConversationManager()?.deleteSession(sessionId);
     }
-    activeGeneratorRef.current = null;
     setSessionId(null);
     setMetrics(null);
     adapter.reset(configRef.current?.initialMessages ?? []);
@@ -416,30 +446,46 @@ export function useChat(
       return;
     }
 
-    // Remove last assistant message from UI
-    const removed = adapter.removeLastAssistantMessage();
-    if (!removed) return;
-
-    // Find the last user message
-    const currentMessages = adapter.getMessages();
-    const lastUserMessage = currentMessages
+    // Validate everything BEFORE any destructive step: a missing session
+    // (model switch, failed first send) or a text-less user message used to
+    // delete the answer and then silently do nothing.
+    const lastUserMessage = adapter
+      .getMessages()
       .filter((m) => m.role === "user")
       .pop();
-
-    if (!lastUserMessage) return;
-
-    // Get the text from the last user message
-    const textPart = lastUserMessage.parts.find((p) => p.type === "text");
+    const textPart = lastUserMessage?.parts.find((p) => p.type === "text");
     const text = textPart?.type === "text" ? textPart.text : "";
+    if (!sessionId || !text) {
+      return;
+    }
 
-    if (sessionId && text) {
+    // Close the gate synchronously so a double-click can't pass it twice
+    // during the rollback await below.
+    adapter.setStatus("submitted");
+    const epoch = runEpochRef.current;
+
+    // Remove the WHOLE trailing assistant turn — the agent-side rollback pops
+    // everything after the last user item, and leaving the turn's earlier
+    // tool messages in the UI duplicated their steps on the activity rail.
+    if (!adapter.removeLastAssistantTurn()) {
+      adapter.setStatus("idle");
+      return;
+    }
+
+    try {
       // Roll back the session so the agent doesn't see the old assistant turn
       await agent.rollbackLastAssistantTurn(sessionId);
-
-      adapter.setStatus("submitted");
-      const events = agent.chat(text, { sessionId });
-      await processAgentEvents(events);
+    } catch (error) {
+      adapter.appendErrorNotice(error);
+      adapter.setStatus("error");
+      return;
     }
+    if (epoch !== runEpochRef.current) {
+      return;
+    }
+
+    const events = agent.chat(text, { sessionId });
+    await processAgentEvents(events);
   }, [adapter, agent, sessionId, processAgentEvents]);
 
   // Set messages directly
@@ -448,6 +494,32 @@ export function useChat(
       adapter.setMessages(newMessages);
     },
     [adapter],
+  );
+
+  // Attach an external event stream (e.g. a background run that survived a
+  // page reload) as the current turn.
+  const attachExternalTurn = useCallback(
+    async (
+      events: AsyncGenerator<AgentEvent>,
+      options?: { userText?: string },
+    ): Promise<void> => {
+      if (isAdapterBusy(adapter)) {
+        await events.return?.(undefined);
+        return;
+      }
+      if (options?.userText) {
+        adapter.addUserMessage(options.userText);
+      }
+      adapter.setStatus("submitted");
+      await processAgentEvents(events);
+      // Replayed streams of an already-finished run end without an
+      // execution_complete-driven status change — settle back to idle.
+      if (isAdapterBusy(adapter)) {
+        adapter.abortTurn();
+        adapter.setStatus("idle");
+      }
+    },
+    [adapter, processAgentEvents],
   );
 
   return {
@@ -461,5 +533,6 @@ export function useChat(
     reset,
     regenerate,
     setMessages: setMessagesDirectly,
+    attachExternalTurn,
   };
 }

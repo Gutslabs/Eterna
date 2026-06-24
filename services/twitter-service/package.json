@@ -1,0 +1,20 @@
+{
+  "name": "eterna-twitter-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Thin local HTTP wrapper around CoinTheHat/twitter-scraper so the Eterna extension can search X/Twitter in the background.",
+  "scripts": {
+    "start": "tsx server.ts",
+    "dev": "tsx watch server.ts"
+  },
+  "dependencies": {
+    "twitter-scraper": "https://github.com/CoinTheHat/twitter-scraper/archive/refs/heads/main.tar.gz",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.10.0"
+  }
+}

@@ -392,6 +392,23 @@ export function isXaiGatewayModel(model: string | undefined): boolean {
 }
 
 /**
+ * Whether a model can fan out into concurrent background subagents.
+ *
+ * Only true for real API/OAuth endpoints that accept parallel requests:
+ * Gemini and Grok (CLIProxyAPI :8317) and Codex/ChatGPT (OAuth Responses
+ * API). The web gateways (catgpt-browser, claude-browser) drive a single
+ * shared web-UI thread and cannot run requests in parallel, so subagent
+ * orchestration is disabled there.
+ */
+export function supportsParallelSubagents(model: string | undefined): boolean {
+  return (
+    isGeminiGatewayModel(model) ||
+    isXaiGatewayModel(model) ||
+    isChatGptModel(model)
+  );
+}
+
+/**
  * The gateway only supports non-streaming requests, but the chat UI streams.
  * Convert one non-streaming chat completion into the SSE chunk format the AI
  * SDK expects (single content delta + finish), preserving any tool calls.
@@ -493,19 +510,22 @@ export function startFreshGatewayThread(model: string | undefined): void {
     .catch(() => {});
 }
 
-function resolveGatewayConversation(
-  isNewChat: boolean,
-  firstUserText: string,
-): { id: string; minted: boolean } {
-  const minted =
-    isNewChat ||
+/**
+ * Minting is keyed on (null id | changed first-user-text) ONLY — deliberately
+ * NOT on "no assistant turn yet": the AI SDK retries failed requests through
+ * this fetch, and minting per attempt opened a fresh web thread for every
+ * retry of a conversation's first message. New Chat resets the id explicitly
+ * via startFreshGatewayThread, so a retry reuses the same conversation.
+ */
+function resolveGatewayConversationId(firstUserText: string): string {
+  if (
     gatewayConversationId === null ||
-    firstUserText !== gatewayConversationFirstUserText;
-  if (minted) {
+    firstUserText !== gatewayConversationFirstUserText
+  ) {
     gatewayConversationId = crypto.randomUUID();
     gatewayConversationFirstUserText = firstUserText;
   }
-  return { id: gatewayConversationId as string, minted };
+  return gatewayConversationId;
 }
 
 /**
@@ -521,7 +541,6 @@ export async function catgptGatewayFetch(
   init?: RequestInit,
 ): Promise<Response> {
   let wantsStream = false;
-  let isNewChat = true;
   let firstUserText = "";
   let parsedBody: {
     model?: string;
@@ -536,12 +555,10 @@ export async function catgptGatewayFetch(
       const messages = Array.isArray(parsedBody?.messages)
         ? parsedBody.messages
         : [];
-      // A fresh AIPex conversation has no assistant turn yet.
-      isNewChat = !messages.some((m) => m?.role === "assistant");
       const firstUser = messages.find((m) => m?.role === "user");
       firstUserText = extractMessageText(firstUser?.content).slice(0, 200);
     } catch {
-      // ignore — an unparseable body falls through as an empty message
+      // ignore — an unparsable body falls through as an empty message
     }
   }
 
@@ -558,35 +575,19 @@ export async function catgptGatewayFetch(
   const lastUserMessage = [...allMessages]
     .reverse()
     .find((m) => m?.role === "user");
-  const conversation = resolveGatewayConversation(isNewChat, firstUserText);
-
-  // Continuing a conversation the gateway has never seen (sidebar reloaded or
-  // switched to a stored conversation): its web thread is unknown, so a new
-  // thread starts — replay the recent turns once so the model has context.
-  let outgoingMessages: Array<Record<string, unknown>>;
-  if (conversation.minted && !isNewChat) {
-    outgoingMessages = allMessages
-      .filter(
-        (m) =>
-          (m?.role === "user" || m?.role === "assistant") &&
-          extractMessageText(m?.content).trim() !== "",
-      )
-      .slice(-12);
-  } else {
-    outgoingMessages = lastUserMessage
-      ? [lastUserMessage]
-      : [{ role: "user", content: "(empty message)" }];
-  }
+  const conversationId = resolveGatewayConversationId(firstUserText);
 
   const response = await globalThis.fetch(`${origin}/v1/chat/completions`, {
     ...init,
     body: JSON.stringify({
       ...parsedBody,
-      messages: outgoingMessages,
+      messages: lastUserMessage
+        ? [lastUserMessage]
+        : [{ role: "user", content: "(empty message)" }],
       tools: undefined,
       tool_choice: undefined,
       stream: false,
-      conversation_id: conversation.id,
+      conversation_id: conversationId,
     }),
   });
   if (!response.ok) {
@@ -600,9 +601,20 @@ export async function catgptGatewayFetch(
     );
     return response;
   }
-  const json = (await response.json().catch(() => ({}))) as {
+  const json = (await response.json().catch(() => null)) as {
     choices?: Array<{ message?: { content?: unknown } }>;
-  };
+  } | null;
+  if (json === null || !Array.isArray(json.choices)) {
+    // A 200 with an unparseable/shape-less body (proxy returning HTML, a
+    // truncated response) used to surface as a silent EMPTY assistant
+    // bubble. Turn it into an error the SDK and chat can show.
+    return new Response(
+      JSON.stringify({
+        error: { message: "Gateway returned an invalid response body." },
+      }),
+      { status: 502, headers: { "content-type": "application/json" } },
+    );
+  }
   const content = extractMessageText(json.choices?.[0]?.message?.content);
 
   const completion = {
@@ -646,6 +658,42 @@ export function createCatGptGatewayProvider() {
 }
 
 /**
+ * Thinking level requested for Gemini gateway models. Without an explicit
+ * reasoning_effort the proxy leaves thinkingConfig unset and Gemini 3.x
+ * occasionally leaks its thinking into the visible text channel (prefixed
+ * with a raw "待94>thought" delimiter). With it, thoughts arrive cleanly as
+ * reasoning_content deltas, which the UI routes into the activity rail.
+ */
+const GEMINI_REASONING_EFFORT = "low";
+
+/**
+ * Inject reasoning_effort into Gemini chat-completion bodies. Grok models
+ * share this provider (same CLIProxyAPI endpoint) and must stay untouched.
+ */
+export async function geminiGatewayFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const body = init?.body;
+  if (typeof body === "string") {
+    try {
+      const parsed = JSON.parse(body) as Record<string, unknown>;
+      if (
+        typeof parsed.model === "string" &&
+        parsed.model.startsWith("gemini") &&
+        parsed.reasoning_effort === undefined
+      ) {
+        parsed.reasoning_effort = GEMINI_REASONING_EFFORT;
+        return fetch(input, { ...init, body: JSON.stringify(parsed) });
+      }
+    } catch {
+      // Non-JSON body — pass through untouched.
+    }
+  }
+  return fetch(input, init);
+}
+
+/**
  * Provider for Gemini through the local gemini-cli OAuth proxy. The proxy
  * ignores the API key (any placeholder works) and authenticates to Google
  * using the cached gemini-cli OAuth credentials (the user's Google account).
@@ -655,6 +703,7 @@ export function createGeminiGatewayProvider() {
     name: "gemini-gateway",
     baseURL: GEMINI_GATEWAY_URL,
     apiKey: "eterna",
+    fetch: geminiGatewayFetch,
   });
 }
 

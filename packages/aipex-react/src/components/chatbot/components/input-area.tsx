@@ -456,6 +456,9 @@ export function DefaultInputArea({
                 loading={isLoadingModels}
               />
             )}
+
+            {/* Extra composer controls (e.g. parallel-agent toggle) */}
+            {slots.composerTools?.()}
           </PromptInputTools>
 
           {/* Submit/Stop Button */}

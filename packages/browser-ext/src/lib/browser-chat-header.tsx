@@ -12,7 +12,7 @@ import { useTranslation } from "@aipexstudio/aipex-react/i18n/context";
 import { cn } from "@aipexstudio/aipex-react/lib/utils";
 import type { HeaderProps } from "@aipexstudio/aipex-react/types";
 import { conversationStorage } from "@aipexstudio/browser-runtime";
-import { PlusIcon, XIcon } from "lucide-react";
+import { ExternalLinkIcon, PlusIcon, XIcon } from "lucide-react";
 import {
   lazy,
   Suspense,
@@ -21,10 +21,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { startFreshGatewayThread } from "./ai-provider";
 import { HeaderMenu } from "./header-menu";
 import { ConversationHistoryPage } from "./history-page";
 import { fromStorageFormat, toStorageFormat } from "./message-adapter";
+import { getRemoteBrowserAgent } from "./remote-agent";
 
 // The settings surface (provider forms, skill manager, file explorer) is heavy
 // and rarely opened — load it only when the user actually opens Settings.
@@ -50,6 +50,11 @@ function firstUserDomain(messages: readonly unknown[]): string | undefined {
   return undefined;
 }
 
+/** Quiet-period debounce before persisting the conversation. */
+const SAVE_DEBOUNCE_MS = 1000;
+/** Hard cap between saves while messages keep changing (active streaming). */
+const SAVE_MAX_INTERVAL_MS = 2000;
+
 export function BrowserChatHeader({
   title = "Eterna",
   onSettingsClick,
@@ -59,7 +64,8 @@ export function BrowserChatHeader({
   ...props
 }: HeaderProps) {
   const { t } = useTranslation();
-  const { messages, setMessages, interrupt } = useChatContext();
+  const { messages, setMessages, interrupt, reset, attachExternalTurn } =
+    useChatContext();
   const { settings } = useConfigContext();
 
   const [currentConversationId, setCurrentConversationId] = useState<
@@ -72,36 +78,55 @@ export function BrowserChatHeader({
   const handleCloseHistory = useCallback(() => setHistoryOpen(false), []);
   const handleCloseSettings = useCallback(() => setSettingsOpen(false), []);
 
-  // Persistence: debounced save/update on messages change
+  // Persistence: debounced save/update on messages change.
+  // The debounce alone is not enough: while a response streams, messages
+  // change every few ms, a pure debounce never fires, and a mid-stream page
+  // refresh lost the whole turn. So the wait is capped — at most
+  // SAVE_MAX_INTERVAL_MS may pass between saves while changes keep coming —
+  // and a pagehide flush narrows the remaining window on refresh/navigation.
   const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const lastSaveAtRef = useRef(0);
+  const saveNowRef = useRef<(() => void) | undefined>(undefined);
+  // Serialized form of the last persisted message list. Restoring a
+  // conversation seeds this so merely viewing it never writes (a no-op
+  // update would bump updatedAt and jump the chat to the top of history).
+  const lastSavedSnapshotRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Clear any pending save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
 
-    // Debounce save for 1 second
-    saveTimeoutRef.current = setTimeout(async () => {
+    const save = async () => {
       // Only save if we have non-system messages
       const nonSystemMessages = messages.filter((msg) => msg.role !== "system");
       if (nonSystemMessages.length === 0) return;
+
+      const payload = toStorageFormat(messages);
+      const snapshot = JSON.stringify(payload);
+      if (snapshot === lastSavedSnapshotRef.current) return;
 
       try {
         if (currentConversationId) {
           // Update existing conversation
           await conversationStorage.updateConversation(
             currentConversationId,
-            toStorageFormat(messages),
+            payload,
           );
+          lastSavedSnapshotRef.current = snapshot;
+          getRemoteBrowserAgent().bindConversation(currentConversationId);
         } else if (nonSystemMessages.length >= 2) {
           // Create new conversation only when we have at least user message + assistant response
           const conversationId = await conversationStorage.saveConversation(
-            toStorageFormat(messages),
+            payload,
             { domain: firstUserDomain(messages) },
           );
           if (conversationId) {
             setCurrentConversationId(conversationId);
+            lastSavedSnapshotRef.current = snapshot;
+            // Let the background run host know which stored conversation
+            // this run belongs to, so a reloaded sidebar can re-join it.
+            getRemoteBrowserAgent().bindConversation(conversationId);
             console.log(
               "💾 New conversation created and saved:",
               conversationId,
@@ -111,7 +136,20 @@ export function BrowserChatHeader({
       } catch (error) {
         console.error("❌ Failed to save conversation:", error);
       }
-    }, 1000);
+    };
+
+    const runSave = () => {
+      lastSaveAtRef.current = Date.now();
+      void save();
+    };
+    saveNowRef.current = runSave;
+
+    const sinceLastSave = Date.now() - lastSaveAtRef.current;
+    const delay =
+      sinceLastSave >= SAVE_MAX_INTERVAL_MS
+        ? 0
+        : Math.min(SAVE_DEBOUNCE_MS, SAVE_MAX_INTERVAL_MS - sinceLastSave);
+    saveTimeoutRef.current = setTimeout(runSave, delay);
 
     return () => {
       if (saveTimeoutRef.current) {
@@ -119,6 +157,67 @@ export function BrowserChatHeader({
       }
     };
   }, [messages, currentConversationId]);
+
+  // Best-effort flush when the sidebar is torn down (host page refresh or
+  // navigation) so an in-flight turn keeps its already-streamed text.
+  useEffect(() => {
+    const flush = () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      saveNowRef.current?.();
+    };
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, []);
+
+  // Re-join a turn that kept running in the background service worker while
+  // this sidebar was torn down (host page refresh/navigation). Replays the
+  // whole turn's events, then continues live.
+  const resumeAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (resumeAttemptedRef.current) return;
+    resumeAttemptedRef.current = true;
+
+    void (async () => {
+      try {
+        const attachment = await getRemoteBrowserAgent().attachActiveRun();
+        if (!attachment) return;
+        // A run the user already watched finish needs no resurrection; only
+        // still-active runs or ones that completed while detached do.
+        if (
+          (attachment.done && !attachment.completedDetached) ||
+          attachment.truncated
+        ) {
+          await attachment.events.return?.(undefined);
+          return;
+        }
+
+        let userText: string | undefined = attachment.userText;
+        if (attachment.conversationId) {
+          const conversation = await conversationStorage.getConversation(
+            attachment.conversationId,
+          );
+          if (conversation) {
+            setCurrentConversationId(attachment.conversationId);
+            const restored = fromStorageFormat(conversation.messages);
+            // Drop the partially-saved assistant tail — the replay rebuilds
+            // the whole turn from its event log.
+            let end = restored.length;
+            while (end > 0 && restored[end - 1]?.role === "assistant") {
+              end -= 1;
+            }
+            setMessages(restored.slice(0, end));
+            userText = undefined;
+          }
+        }
+
+        await attachExternalTurn(attachment.events, { userText });
+      } catch {
+        // Background host unreachable — start as a normal fresh sidebar.
+      }
+    })();
+  }, [attachExternalTurn, setMessages]);
 
   const handleOpenOptions = useCallback(() => {
     if (onSettingsClick) {
@@ -144,11 +243,25 @@ export function BrowserChatHeader({
         await interrupt();
       }
 
+      // Drop the previous conversation's agent session AND gateway web
+      // thread. Without this the next message was sent into the OLD
+      // conversation's session/thread while its answer rendered under the
+      // restored one (cross-conversation context leakage). The gateway
+      // thread state lives host-side now, so reset it over RPC.
+      reset();
+      void getRemoteBrowserAgent()
+        .freshGatewayThread(settings.aiModel)
+        .catch(() => {});
+
       // Set the current conversation ID first
       setCurrentConversationId(conversationId);
 
-      // Restore messages to UI state (convert from storage format)
-      setMessages(fromStorageFormat(conversation.messages));
+      // Restore messages to UI state (convert from storage format). Seed the
+      // saved-snapshot guard so viewing alone never rewrites the conversation
+      // (which would bump it to the top of the history list).
+      const restored = fromStorageFormat(conversation.messages);
+      lastSavedSnapshotRef.current = JSON.stringify(toStorageFormat(restored));
+      setMessages(restored);
 
       console.log(
         "✅ Conversation restored:",
@@ -166,7 +279,9 @@ export function BrowserChatHeader({
 
     // For gateway models, open a fresh web-UI thread right away (visible in
     // noVNC) instead of waiting for the next message to do it.
-    startFreshGatewayThread(settings.aiModel);
+    void getRemoteBrowserAgent()
+      .freshGatewayThread(settings.aiModel)
+      .catch(() => {});
 
     // Call the passed onNewChat (resets messages and clears input)
     onNewChat?.();
@@ -180,6 +295,16 @@ export function BrowserChatHeader({
   const handleCloseSidebar = useCallback(() => {
     window.parent.postMessage({ type: "aipex-close-sidebar" }, "*");
   }, []);
+
+  // Pop the chat out of the narrow sidebar into a full browser tab (the chat
+  // UI is the same sidepanel.html, just full-width). Conversation history is
+  // shared (IndexedDB + the background run host), so it carries over.
+  const handleOpenInTab = useCallback(() => {
+    void chrome.tabs.create({
+      url: chrome.runtime.getURL("src/sidepanel.html"),
+    });
+    handleCloseSidebar();
+  }, [handleCloseSidebar]);
 
   return (
     <>
@@ -210,15 +335,26 @@ export function BrowserChatHeader({
           />
 
           {isEmbedded && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleCloseSidebar}
-              title={t("common.close")}
-              className="size-8"
-            >
-              <XIcon className="size-4" />
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleOpenInTab}
+                title="Sekmede aç"
+                className="size-8"
+              >
+                <ExternalLinkIcon className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleCloseSidebar}
+                title={t("common.close")}
+                className="size-8"
+              >
+                <XIcon className="size-4" />
+              </Button>
+            </>
           )}
         </div>
 

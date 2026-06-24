@@ -19,7 +19,10 @@ import { prefetchYoutubeTranscript } from "@aipexstudio/browser-runtime/tools/yo
 import { useCallback, useEffect, useRef } from "react";
 import { useTabsSync } from "../hooks/use-tabs-sync";
 
-export const CURRENT_PAGE_CONTEXT_ID = "aipex-current-page";
+export { CURRENT_PAGE_CONTEXT_ID } from "./context-ids";
+
+import { CURRENT_PAGE_CONTEXT_ID } from "./context-ids";
+
 const SELECTION_CONTEXT_PREFIX = "aipex-selection";
 const PENDING_SELECTION_KEY = "aipex-pending-selection";
 const PENDING_CONTEXT_KEY = "aipex-pending-context";
@@ -57,7 +60,9 @@ export async function getPageText(tabId: number): Promise<string> {
  */
 export async function readActivePageContext(): Promise<ContextItem | null> {
   try {
-    const tabs = await chrome.tabs.query({ active: true });
+    // currentWindow keeps multi-window setups honest: {active:true} alone
+    // returns one active tab PER window and could pick another window's page.
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const tab = tabs.find((t) => /^https?:\/\//.test(t.url ?? "")) ?? tabs[0];
     const url = tab?.url ?? "";
     if (!/^https?:\/\//.test(url)) {

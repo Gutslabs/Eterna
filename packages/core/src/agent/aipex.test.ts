@@ -920,6 +920,289 @@ describe("AIPex", () => {
     });
   });
 
+  describe("reasoning passthrough", () => {
+    it("should surface aisdk reasoning-delta parts as reasoning_delta events", async () => {
+      vi.mocked(run).mockResolvedValue(
+        createMockRunResult({
+          finalOutput: "The answer",
+          streamEvents: [
+            {
+              type: "raw_model_stream_event",
+              data: {
+                type: "model",
+                event: { type: "reasoning-delta", id: "r1", delta: "Hmm, " },
+              },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: {
+                type: "model",
+                event: {
+                  type: "reasoning-delta",
+                  id: "r1",
+                  delta: "let me think",
+                },
+              },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: "The answer" },
+            },
+          ],
+        }),
+      );
+
+      const agent = AIPex.create({ instructions: "Test", model: mockModel });
+
+      const events: AgentEvent[] = [];
+      for await (const event of agent.chat("Hi")) {
+        events.push(event);
+      }
+
+      const reasoningDeltas = events
+        .filter((e) => e.type === "reasoning_delta")
+        .map((e) => (e.type === "reasoning_delta" ? e.delta : ""));
+      expect(reasoningDeltas).toEqual(["Hmm, ", "let me think"]);
+
+      const contentIndex = events.findIndex((e) => e.type === "content_delta");
+      const lastReasoningIndex = events.findLastIndex(
+        (e) => e.type === "reasoning_delta",
+      );
+      expect(lastReasoningIndex).toBeLessThan(contentIndex);
+    });
+
+    it("should ignore empty reasoning-delta parts", async () => {
+      vi.mocked(run).mockResolvedValue(
+        createMockRunResult({
+          finalOutput: "Hi",
+          streamEvents: [
+            {
+              type: "raw_model_stream_event",
+              data: {
+                type: "model",
+                event: { type: "reasoning-delta", id: "r1", delta: "" },
+              },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: "Hi" },
+            },
+          ],
+        }),
+      );
+
+      const agent = AIPex.create({ instructions: "Test", model: mockModel });
+
+      const events: AgentEvent[] = [];
+      for await (const event of agent.chat("Hi")) {
+        events.push(event);
+      }
+
+      expect(events.some((e) => e.type === "reasoning_delta")).toBe(false);
+    });
+  });
+
+  describe("leaked thought guard", () => {
+    const leakedTurn =
+      "待94>thought\nCRITICAL INSTRUCTION 1: Always use tools.\nI will load the skill first.";
+
+    it("should reroute a marker-prefixed response into reasoning_delta", async () => {
+      vi.mocked(run).mockResolvedValue(
+        createMockRunResult({
+          finalOutput: leakedTurn,
+          streamEvents: [
+            {
+              type: "raw_model_stream_event",
+              data: { type: "response_started" },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: leakedTurn },
+            },
+          ],
+        }),
+      );
+
+      const agent = AIPex.create({ instructions: "Test", model: mockModel });
+
+      const events: AgentEvent[] = [];
+      for await (const event of agent.chat("Hi")) {
+        events.push(event);
+      }
+
+      expect(events.some((e) => e.type === "content_delta")).toBe(false);
+      const reasoningText = events
+        .filter((e) => e.type === "reasoning_delta")
+        .map((e) => (e.type === "reasoning_delta" ? e.delta : ""))
+        .join("");
+      // Marker line is stripped; the thought text itself is preserved.
+      expect(reasoningText).toBe(
+        "CRITICAL INSTRUCTION 1: Always use tools.\nI will load the skill first.",
+      );
+
+      // finalOutput must not fall back to the polluted runner output.
+      const complete = events.find((e) => e.type === "execution_complete");
+      if (complete?.type === "execution_complete") {
+        expect(complete.finalOutput).toBe("");
+      }
+    });
+
+    it("should handle the marker split across stream deltas", async () => {
+      vi.mocked(run).mockResolvedValue(
+        createMockRunResult({
+          finalOutput: "",
+          streamEvents: [
+            {
+              type: "raw_model_stream_event",
+              data: { type: "response_started" },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: "待9" },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: "4>tho" },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: "ught\nThinking…" },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: " more thought" },
+            },
+          ],
+        }),
+      );
+
+      const agent = AIPex.create({ instructions: "Test", model: mockModel });
+
+      const events: AgentEvent[] = [];
+      for await (const event of agent.chat("Hi")) {
+        events.push(event);
+      }
+
+      expect(events.some((e) => e.type === "content_delta")).toBe(false);
+      const reasoningText = events
+        .filter((e) => e.type === "reasoning_delta")
+        .map((e) => (e.type === "reasoning_delta" ? e.delta : ""))
+        .join("");
+      expect(reasoningText).toBe("Thinking… more thought");
+    });
+
+    it("should keep later clean responses as content and use them as finalOutput", async () => {
+      vi.mocked(run).mockResolvedValue(
+        createMockRunResult({
+          finalOutput: `${leakedTurn}Here is the summary.`,
+          streamEvents: [
+            {
+              type: "raw_model_stream_event",
+              data: { type: "response_started" },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: leakedTurn },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "response_started" },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: {
+                type: "output_text_delta",
+                delta: "Here is the summary.",
+              },
+            },
+          ],
+        }),
+      );
+
+      const agent = AIPex.create({ instructions: "Test", model: mockModel });
+
+      const events: AgentEvent[] = [];
+      for await (const event of agent.chat("Hi")) {
+        events.push(event);
+      }
+
+      const contentText = events
+        .filter((e) => e.type === "content_delta")
+        .map((e) => (e.type === "content_delta" ? e.delta : ""))
+        .join("");
+      expect(contentText).toBe("Here is the summary.");
+
+      const complete = events.find((e) => e.type === "execution_complete");
+      if (complete?.type === "execution_complete") {
+        expect(complete.finalOutput).toBe("Here is the summary.");
+      }
+    });
+
+    it("should flush short un-decidable text at response end", async () => {
+      vi.mocked(run).mockResolvedValue(
+        createMockRunResult({
+          finalOutput: "Done.",
+          streamEvents: [
+            {
+              type: "raw_model_stream_event",
+              data: { type: "response_started" },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: "Done." },
+            },
+          ],
+        }),
+      );
+
+      const agent = AIPex.create({ instructions: "Test", model: mockModel });
+
+      const events: AgentEvent[] = [];
+      for await (const event of agent.chat("Hi")) {
+        events.push(event);
+      }
+
+      const contentText = events
+        .filter((e) => e.type === "content_delta")
+        .map((e) => (e.type === "content_delta" ? e.delta : ""))
+        .join("");
+      expect(contentText).toBe("Done.");
+    });
+
+    it("should not misclassify normal text that mentions thought", async () => {
+      const normal = "I thought about it.\nHere is the plan.";
+      vi.mocked(run).mockResolvedValue(
+        createMockRunResult({
+          finalOutput: normal,
+          streamEvents: [
+            {
+              type: "raw_model_stream_event",
+              data: { type: "response_started" },
+            },
+            {
+              type: "raw_model_stream_event",
+              data: { type: "output_text_delta", delta: normal },
+            },
+          ],
+        }),
+      );
+
+      const agent = AIPex.create({ instructions: "Test", model: mockModel });
+
+      const events: AgentEvent[] = [];
+      for await (const event of agent.chat("Hi")) {
+        events.push(event);
+      }
+
+      expect(events.some((e) => e.type === "reasoning_delta")).toBe(false);
+      const contentText = events
+        .filter((e) => e.type === "content_delta")
+        .map((e) => (e.type === "content_delta" ? e.delta : ""))
+        .join("");
+      expect(contentText).toBe(normal);
+    });
+  });
+
   describe("tools and errors", () => {
     it("should emit tool_call_args_streaming_complete before tool_call_start", async () => {
       vi.mocked(run).mockResolvedValue(

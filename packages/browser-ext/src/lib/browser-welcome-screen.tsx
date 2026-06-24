@@ -8,19 +8,21 @@
  * text. Falls back to the default welcome on restricted pages.
  */
 
+import { useChatContext } from "@aipexstudio/aipex-react/components/chatbot";
 import { DefaultWelcomeScreen } from "@aipexstudio/aipex-react/components/chatbot/components";
 import { useTranslation } from "@aipexstudio/aipex-react/i18n/context";
 import { cn } from "@aipexstudio/aipex-react/lib/utils";
 import type { WelcomeScreenProps } from "@aipexstudio/aipex-react/types";
 import { ChevronRightIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-import { getPageText } from "./browser-context-loader";
+import { useCallback, useEffect, useState } from "react";
+import { getPageText, readActivePageContext } from "./browser-context-loader";
 import {
   buildPageBrief,
   cleanPageTitle,
   countWords,
   type PageBrief,
 } from "./page-brief";
+import { withYoutubeTranscriptChunk } from "./youtube-transcript-feed";
 
 const ACCENT_OK = "#7fae8e";
 
@@ -70,7 +72,10 @@ function useScannedPage(): ScanState {
       const seq = ++scanSeq;
       const startedAt = Date.now();
       try {
-        const tabs = await chrome.tabs.query({ active: true });
+        const tabs = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
         const tab =
           tabs.find((t) => /^https?:\/\//.test(t.url ?? "")) ?? tabs[0];
         const url = tab?.url ?? "";
@@ -279,6 +284,23 @@ export function BrowserWelcomeScreen({
 }: WelcomeScreenProps) {
   const { t } = useTranslation();
   const scan = useScannedPage();
+  const { sendMessage, messages } = useChatContext();
+
+  // The page-specific prompts are deictic ("Summarize THIS video") — they
+  // must carry the page context (and transcript chunk) themselves. The plain
+  // onSuggestionClick path goes straight to sendMessage with no contexts,
+  // which left gateway models asking "which video?".
+  const sendSuggestion = useCallback(
+    (text: string) => {
+      void (async () => {
+        const page = await readActivePageContext().catch(() => null);
+        const contexts = page ? [page] : undefined;
+        const enriched = await withYoutubeTranscriptChunk(contexts, messages);
+        await sendMessage(text, undefined, enriched);
+      })();
+    },
+    [sendMessage, messages],
+  );
 
   // Restricted pages (chrome://, web store, …) keep the generic welcome.
   if (scan.status === "unavailable") {
@@ -308,10 +330,7 @@ export function BrowserWelcomeScreen({
             scanning={false}
           />
           <PageBriefCard page={scan.page} />
-          <SuggestionRows
-            page={scan.page}
-            onSuggestionClick={onSuggestionClick}
-          />
+          <SuggestionRows page={scan.page} onSuggestionClick={sendSuggestion} />
           <div className="flex items-center gap-2 px-0.5 text-[11.5px] text-muted-foreground/60">
             <span>{t("pageBrief.general")}</span>
             <button

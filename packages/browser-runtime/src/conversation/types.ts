@@ -3,6 +3,7 @@
  */
 export type MessagePart =
   | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
   | { type: "image"; imageData: string; imageTitle?: string }
   | {
       type: "tool_use";

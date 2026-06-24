@@ -179,8 +179,11 @@ export class ConversationStorage {
   }
 
   /**
-   * Get a single conversation by ID
-   * Updates the conversation's updatedAt timestamp (LRU access tracking)
+   * Get a single conversation by ID.
+   *
+   * Pure read: updatedAt is NOT touched here. Bumping it on access made
+   * merely opening an old conversation jump it to the top of the history
+   * list — ordering must follow real message activity only.
    */
   async getConversation(
     conversationId: string,
@@ -188,20 +191,7 @@ export class ConversationStorage {
     await this.ensureMigrated();
 
     try {
-      const conversation = await this.storage.load(conversationId);
-      if (!conversation) {
-        return null;
-      }
-
-      // Update access time for LRU
-      conversation.updatedAt = Date.now();
-      await this.storage.save(conversationId, conversation);
-
-      console.log(
-        "🔄 [ConversationStorage] Conversation access time updated:",
-        conversationId,
-      );
-      return conversation;
+      return (await this.storage.load(conversationId)) ?? null;
     } catch (error) {
       console.error(
         "❌ [ConversationStorage] Failed to get conversation:",

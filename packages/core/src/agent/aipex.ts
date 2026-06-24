@@ -30,6 +30,16 @@ import { AgentError, ErrorCode } from "../utils/errors.js";
 import { safeJsonParse } from "../utils/json.js";
 import { shapeScreenshotItems } from "../utils/screenshot-shaping.js";
 
+/**
+ * Gemini 3.x via OpenAI-compatible gateways occasionally leaks its internal
+ * thinking into the visible text channel, opening the response with a raw
+ * delimiter token observed as "待94>thought\n". When a response's text starts
+ * with this marker the whole flow is the model's thought, not the answer.
+ */
+const LEAKED_THOUGHT_MARKER = /^[㐀-鿿]\d{1,3}>thought\r?\n/;
+/** Buffered-text length at which the marker check is decidable without a newline. */
+const LEAKED_THOUGHT_DECIDE_AT = 16;
+
 export class AIPex {
   private agent: OpenAIAgent;
   private conversationManager?: ConversationManager;
@@ -177,13 +187,43 @@ export class AIPex {
       let toolCallsDetectedInRaw = 0;
       let toolCallsEmittedByRunner = 0;
 
+      // Leaked-thought guard, per model response: hold the first few text
+      // deltas until LEAKED_THOUGHT_MARKER is decidable. A marker-opened
+      // response is rerouted to reasoning_delta (rail) instead of
+      // content_delta (chat bubble), and excluded from streamedOutput.
+      let leakGuardTripped = false;
+      let turnBuffer = "";
+      let turnDecided = false;
+      let turnIsLeakedThought = false;
+
+      // Returns text that was still buffered when the response ended before
+      // the marker check became decidable (short answers like "Done.").
+      const flushUndecidedText = (): string | null => {
+        if (turnDecided || turnBuffer.length === 0) {
+          return null;
+        }
+        turnDecided = true;
+        const pending = turnBuffer;
+        turnBuffer = "";
+        streamedOutput += pending;
+        return pending;
+      };
+
       for await (const streamEvent of result) {
         if (streamEvent.type === "raw_model_stream_event") {
-          // New response boundary: reset per-response tool args tracking.
+          // New response boundary: reset per-response tool args tracking
+          // and the leaked-thought guard.
           if (
             (streamEvent.data as unknown as { type?: string })?.type ===
             "response_started"
           ) {
+            const pendingText = flushUndecidedText();
+            if (pendingText !== null) {
+              yield { type: "content_delta", delta: pendingText };
+            }
+            turnBuffer = "";
+            turnDecided = false;
+            turnIsLeakedThought = false;
             toolArgsStreamByIndex.clear();
             continue;
           }
@@ -193,6 +233,10 @@ export class AIPex {
             (streamEvent.data as unknown as { type?: string })?.type ===
             "response_done"
           ) {
+            const pendingText = flushUndecidedText();
+            if (pendingText !== null) {
+              yield { type: "content_delta", delta: pendingText };
+            }
             const response = (
               streamEvent.data as unknown as {
                 response?: { output?: unknown[] };
@@ -221,6 +265,21 @@ export class AIPex {
           ) {
             const raw = (streamEvent.data as unknown as { event?: unknown })
               ?.event as unknown;
+
+            // AI SDK models (via the aisdk wrapper) pass every stream part
+            // through as a "model" event. reasoning-delta carries the model's
+            // thinking (reasoning_content on OpenAI-compatible gateways,
+            // extended thinking on Anthropic) — surface it for the rail.
+            if ((raw as { type?: string })?.type === "reasoning-delta") {
+              const reasoningDelta = (raw as { delta?: unknown }).delta;
+              if (
+                typeof reasoningDelta === "string" &&
+                reasoningDelta.length > 0
+              ) {
+                yield { type: "reasoning_delta", delta: reasoningDelta };
+              }
+            }
+
             const choices = (raw as any)?.choices;
             const delta = Array.isArray(choices) ? choices?.[0]?.delta : null;
             const toolCalls = delta?.tool_calls;
@@ -261,8 +320,38 @@ export class AIPex {
           }
 
           if (streamEvent.data.type === "output_text_delta") {
-            streamedOutput += streamEvent.data.delta;
-            yield { type: "content_delta", delta: streamEvent.data.delta };
+            const delta = streamEvent.data.delta;
+            if (turnDecided) {
+              if (turnIsLeakedThought) {
+                yield { type: "reasoning_delta", delta };
+              } else {
+                streamedOutput += delta;
+                yield { type: "content_delta", delta };
+              }
+            } else {
+              turnBuffer += delta;
+              if (
+                turnBuffer.includes("\n") ||
+                turnBuffer.length >= LEAKED_THOUGHT_DECIDE_AT
+              ) {
+                turnDecided = true;
+                const marker = LEAKED_THOUGHT_MARKER.exec(turnBuffer);
+                const rest = marker
+                  ? turnBuffer.slice(marker[0].length)
+                  : turnBuffer;
+                turnBuffer = "";
+                if (marker) {
+                  turnIsLeakedThought = true;
+                  leakGuardTripped = true;
+                  if (rest) {
+                    yield { type: "reasoning_delta", delta: rest };
+                  }
+                } else {
+                  streamedOutput += rest;
+                  yield { type: "content_delta", delta: rest };
+                }
+              }
+            }
           }
           continue;
         }
@@ -291,6 +380,11 @@ export class AIPex {
         }
       }
 
+      const trailingText = flushUndecidedText();
+      if (trailingText !== null) {
+        yield { type: "content_delta", delta: trailingText };
+      }
+
       if (toolCallsDetectedInRaw > 0 || toolCallsEmittedByRunner > 0) {
         console.log(
           `[AIPex] Stream complete: ${toolCallsDetectedInRaw} raw tool_call chunks, ` +
@@ -298,8 +392,12 @@ export class AIPex {
         );
       }
 
+      // When the leak guard rerouted a response, result.finalOutput still
+      // contains the leaked thought text — fall back to the clean stream.
       const finalOutput =
-        typeof result.finalOutput === "string" && result.finalOutput.length > 0
+        !leakGuardTripped &&
+        typeof result.finalOutput === "string" &&
+        result.finalOutput.length > 0
           ? result.finalOutput
           : streamedOutput;
 

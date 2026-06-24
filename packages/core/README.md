@@ -1,8 +1,8 @@
-# @aipexstudio/aipex-core
+# @eternastudio/eterna-core
 
 Platform-agnostic TypeScript building blocks for creating **streaming, tool-using AI agents**.
 
-`@aipexstudio/aipex-core` wraps `@openai/agents` and adds a few opinionated layers that are
+`@eternastudio/eterna-core` wraps `@openai/agents` and adds a few opinionated layers that are
 useful for productizing agents:
 
 - A stable **event stream** (`AgentEvent`) that UIs can consume
@@ -23,7 +23,7 @@ useful for productizing agents:
 
 ### Agent + event stream
 
-`AIPex.chat()` returns an `AsyncGenerator<AgentEvent>`. Typical consumers:
+`Eterna.chat()` returns an `AsyncGenerator<AgentEvent>`. Typical consumers:
 
 - **CLI**: print `content_delta` as it streams
 - **UI**: render streaming text, show tool calls, attach contexts, show metrics
@@ -89,14 +89,14 @@ They can:
 ## Installation
 
 ```bash
-npm install @aipexstudio/aipex-core
+npm install @eternastudio/eterna-core
 # or
-pnpm add @aipexstudio/aipex-core
+pnpm add @eternastudio/eterna-core
 ```
 
 ### Optional peer dependencies (model providers)
 
-`@aipexstudio/aipex-core` integrates well with the AI SDK ecosystem. Install the provider(s) you plan to use:
+`@eternastudio/eterna-core` integrates well with the AI SDK ecosystem. Install the provider(s) you plan to use:
 
 - `@ai-sdk/openai`
 - `@ai-sdk/google`
@@ -109,9 +109,9 @@ pnpm add @aipexstudio/aipex-core
 
 ```ts
 import { google } from "@ai-sdk/google";
-import { AIPex, aisdk } from "@aipexstudio/aipex-core";
+import { Eterna, aisdk } from "@eternastudio/eterna-core";
 
-const agent = AIPex.create({
+const agent = Eterna.create({
   instructions: "You are a helpful assistant.",
   model: aisdk(google("gemini-2.5-flash")),
 });
@@ -125,9 +125,9 @@ for await (const event of agent.chat("Say hello in one sentence.")) {
 
 ```ts
 import { google } from "@ai-sdk/google";
-import { AIPex, aisdk, calculatorTool, httpFetchTool } from "@aipexstudio/aipex-core";
+import { Eterna, aisdk, calculatorTool, httpFetchTool } from "@eternastudio/eterna-core";
 
-const agent = AIPex.create({
+const agent = Eterna.create({
   instructions: "Use tools when appropriate.",
   model: aisdk(google("gemini-2.5-flash")),
   tools: [calculatorTool, httpFetchTool],
@@ -148,7 +148,7 @@ for await (const event of agent.chat("What is 15 * 234?")) {
 
 ```ts
 import { z } from "zod";
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eternastudio/eterna-core";
 
 export const weatherTool = tool({
   name: "get_weather",
@@ -169,9 +169,9 @@ returned in the `session_created` event:
 
 ```ts
 import { google } from "@ai-sdk/google";
-import { AIPex, aisdk } from "@aipexstudio/aipex-core";
+import { Eterna, aisdk } from "@eternastudio/eterna-core";
 
-const agent = AIPex.create({
+const agent = Eterna.create({
   instructions: "You remember things within a session.",
   model: aisdk(google("gemini-2.5-flash")),
 });
@@ -193,11 +193,11 @@ if (sessionId) {
 
 ```ts
 import { google } from "@ai-sdk/google";
-import { AIPex, aisdk } from "@aipexstudio/aipex-core";
+import { Eterna, aisdk } from "@eternastudio/eterna-core";
 
 const model = aisdk(google("gemini-2.5-flash"));
 
-const agent = AIPex.create({
+const agent = Eterna.create({
   instructions: "You are a helpful assistant.",
   model,
   compression: {
@@ -213,11 +213,11 @@ const agent = AIPex.create({
 
 ```ts
 import { google } from "@ai-sdk/google";
-import { AIPex, aisdk, ContextManager, type Context } from "@aipexstudio/aipex-core";
+import { Eterna, aisdk, ContextManager, type Context } from "@eternastudio/eterna-core";
 
 const contextManager = new ContextManager();
 
-const agent = AIPex.create({
+const agent = Eterna.create({
   instructions: "Use attached contexts when answering.",
   model: aisdk(google("gemini-2.5-flash")),
   contextManager,
@@ -228,7 +228,7 @@ const pageContext: Context = {
   type: "page",
   providerId: "manual",
   label: "Example page",
-  value: "This page describes the AIPex Core API.",
+  value: "This page describes the Eterna Core API.",
   timestamp: Date.now(),
 };
 
@@ -241,7 +241,7 @@ for await (const event of agent.chat("Summarize the page.", { contexts: [pageCon
 
 ```ts
 import { google } from "@ai-sdk/google";
-import { AIPex, aisdk, type AgentPlugin } from "@aipexstudio/aipex-core";
+import { Eterna, aisdk, type AgentPlugin } from "@eternastudio/eterna-core";
 
 const loggerPlugin: AgentPlugin = {
   id: "logger",
@@ -258,7 +258,7 @@ const loggerPlugin: AgentPlugin = {
   },
 };
 
-const agent = AIPex.create({
+const agent = Eterna.create({
   instructions: "You are a helpful assistant.",
   model: aisdk(google("gemini-2.5-flash")),
   plugins: [loggerPlugin],
@@ -269,7 +269,7 @@ const agent = AIPex.create({
 
 ```ts
 import { z } from "zod";
-import { ToolRegistry } from "@aipexstudio/aipex-core";
+import { ToolRegistry } from "@eternastudio/eterna-core";
 
 const registry = new ToolRegistry();
 
@@ -286,9 +286,9 @@ console.log(result); // "echo:hello"
 
 ## API reference
 
-### `AIPex`
+### `Eterna`
 
-- `AIPex.create(options: AIPexOptions): AIPex`
+- `Eterna.create(options: EternaOptions): Eterna`
 - `agent.chat(input: string, options?: ChatOptions): AsyncGenerator<AgentEvent>`
 - `agent.getConversationManager(): ConversationManager | undefined`
 - `agent.getContextManager(): ContextManager | undefined`
@@ -318,7 +318,7 @@ export type AgentEvent =
   | { type: "execution_complete"; finalOutput: string; metrics: AgentMetrics };
 ```
 
-### `AIPexOptions`
+### `EternaOptions`
 
 Key fields:
 
@@ -364,17 +364,17 @@ Key fields:
 From the repository root:
 
 ```bash
-pnpm --filter @aipexstudio/aipex-core build
-pnpm --filter @aipexstudio/aipex-core typecheck
-pnpm --filter @aipexstudio/aipex-core test
+pnpm --filter @eternastudio/eterna-core build
+pnpm --filter @eternastudio/eterna-core typecheck
+pnpm --filter @eternastudio/eterna-core test
 ```
 
 Run the included examples:
 
 ```bash
-pnpm --filter @aipexstudio/aipex-core example:basic
-pnpm --filter @aipexstudio/aipex-core example:fork
-pnpm --filter @aipexstudio/aipex-core example:metrics
+pnpm --filter @eternastudio/eterna-core example:basic
+pnpm --filter @eternastudio/eterna-core example:fork
+pnpm --filter @eternastudio/eterna-core example:metrics
 ```
 
 ## License

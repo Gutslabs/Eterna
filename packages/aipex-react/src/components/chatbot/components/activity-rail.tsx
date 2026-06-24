@@ -2,6 +2,7 @@ import { ChevronDownIcon } from "lucide-react";
 import {
   memo,
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -383,19 +384,24 @@ export const ActivityRail = memo(function ActivityRail({
 }: ActivityRailProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<RailPhase>(isLive ? "live" : "collapsed");
+  // Stable identity: ShrinkAway keys its rAF + fallback effect on this, and
+  // streaming re-renders would otherwise re-arm them every 50ms publish.
+  const collapseNow = useCallback(() => setPhase("collapsed"), []);
 
   // Live elapsed: ticks every 100ms, shown with 0.1s precision; the final
-  // value freezes as the rail's total when the turn completes live.
+  // value freezes as the rail's total when the turn completes live. The
+  // start resets on every rising edge — a rail can go live again (e.g. a
+  // retry re-runs the turn) and must not resume the old count.
   const liveStartRef = useRef<number | null>(null);
   const finalElapsedRef = useRef<number | null>(null);
-  if (isLive && liveStartRef.current === null) {
-    liveStartRef.current = Date.now();
-  }
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
     if (!isLive) {
       return;
     }
+    liveStartRef.current = Date.now();
+    finalElapsedRef.current = null;
+    setElapsedMs(0);
     const tick = () => {
       if (liveStartRef.current !== null) {
         const elapsed = Date.now() - liveStartRef.current;
@@ -403,7 +409,6 @@ export const ActivityRail = memo(function ActivityRail({
         setElapsedMs(elapsed);
       }
     };
-    tick();
     const timer = setInterval(tick, LIVE_TICK_MS);
     return () => clearInterval(timer);
   }, [isLive]);
@@ -554,9 +559,7 @@ export const ActivityRail = memo(function ActivityRail({
       {phase === "live" && expandedCard(false)}
 
       {phase === "shrinking" && (
-        <ShrinkAway onDone={() => setPhase("collapsed")}>
-          {expandedCard(true)}
-        </ShrinkAway>
+        <ShrinkAway onDone={collapseNow}>{expandedCard(true)}</ShrinkAway>
       )}
 
       {phase === "collapsed" && collapsedRow}

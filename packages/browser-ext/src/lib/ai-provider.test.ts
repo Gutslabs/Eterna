@@ -597,7 +597,7 @@ describe("catgptGatewayFetch conversation routing", () => {
     const body = lastRequestBody();
     expect(body.model).toBe("catgpt-browser::GPT-5.6 Sol|High");
     expect(body.messages).toEqual([userMsg("merhaba")]);
-    expect(body.stream).toBe(false);
+    expect(body.stream).toBe(true);
     expect(body.tools).toBeUndefined();
     expect(body.tool_choice).toBeUndefined();
     expect(typeof body.conversation_id).toBe("string");
@@ -688,6 +688,49 @@ describe("catgptGatewayFetch conversation routing", () => {
     const text = await response.text();
     expect(text).toContain('"content":"ok"');
     expect(text).toContain("data: [DONE]");
+  });
+
+  it("passes a live gateway SSE response through without buffering it", async () => {
+    const liveBody =
+      'data: {"choices":[{"delta":{"content":"ilk"}}]}\n\n' +
+      "data: [DONE]\n\n";
+    fetchMock.mockResolvedValueOnce(
+      new Response(liveBody, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+
+    const response = await send({
+      model: "catgpt-browser::GPT-5.6 Sol|Instant",
+      stream: true,
+      messages: [userMsg("canlı stream")],
+    });
+
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(await response.text()).toBe(liveBody);
+    expect(lastRequestBody().stream).toBe(true);
+  });
+
+  it("keeps attachment requests on the non-streaming compatibility path", async () => {
+    await send({
+      model: "catgpt-browser::GPT-5.6 Sol|Instant",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "bu görsel ne?" },
+            {
+              type: "image_url",
+              image_url: { url: "data:image/png;base64,AA==" },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(lastRequestBody().stream).toBe(false);
   });
 });
 

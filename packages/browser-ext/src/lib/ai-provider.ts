@@ -432,9 +432,9 @@ export function supportsParallelSubagents(model: string | undefined): boolean {
 }
 
 /**
- * The gateway only supports non-streaming requests, but the chat UI streams.
- * Convert one non-streaming chat completion into the SSE chunk format the AI
- * SDK expects (single content delta + finish), preserving any tool calls.
+ * Convert one non-streaming fallback completion into the SSE chunk format the
+ * AI SDK expects. Text-only ChatGPT requests pass through the gateway's live
+ * SSE stream; attachments keep using this compatibility path.
  */
 function chatCompletionToSse(json: {
   id?: string;
@@ -598,6 +598,17 @@ export async function catgptGatewayFetch(
   const lastUserMessage = [...allMessages]
     .reverse()
     .find((m) => m?.role === "user");
+  const lastUserContent = lastUserMessage?.content;
+  const supportsLiveStream =
+    wantsStream &&
+    (typeof lastUserContent === "string" ||
+      (Array.isArray(lastUserContent) &&
+        lastUserContent.every(
+          (part) =>
+            typeof part === "object" &&
+            part !== null &&
+            (part as { type?: unknown }).type === "text",
+        )));
   const conversationId = resolveGatewayConversationId(firstUserText);
 
   const response = await globalThis.fetch(`${origin}/v1/chat/completions`, {
@@ -609,7 +620,7 @@ export async function catgptGatewayFetch(
         : [{ role: "user", content: "(empty message)" }],
       tools: undefined,
       tool_choice: undefined,
-      stream: false,
+      stream: supportsLiveStream,
       conversation_id: conversationId,
     }),
   });
@@ -618,6 +629,12 @@ export async function catgptGatewayFetch(
       status: response.status,
       requestId: response.headers.get("x-request-id") ?? undefined,
     });
+    return response;
+  }
+  if (
+    supportsLiveStream &&
+    response.headers.get("content-type")?.includes("text/event-stream")
+  ) {
     return response;
   }
   const json = (await response.json().catch(() => null)) as {

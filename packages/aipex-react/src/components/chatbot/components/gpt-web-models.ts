@@ -15,7 +15,7 @@ export const GPT_WEB_INTELLIGENCE_LEVELS = [
 ] as const;
 
 const DEFAULT_GPT_WEB_FAMILY = GPT_WEB_MODEL_FAMILIES[0];
-const DEFAULT_GPT_WEB_INTELLIGENCE = "High";
+const DEFAULT_GPT_WEB_INTELLIGENCE = "Instant";
 
 const FAMILY_STATUS: Partial<
   Record<(typeof GPT_WEB_MODEL_FAMILIES)[number], string>

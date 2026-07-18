@@ -38,7 +38,7 @@ describe("createGptWebModelEntries", () => {
       "catgpt-browser::GPT-5.3|Medium",
     );
     expect(normalizeGptWebModelValue("catgpt-browser")).toBe(
-      "catgpt-browser::GPT-5.6 Sol|High",
+      "catgpt-browser::GPT-5.6 Sol|Instant",
     );
   });
 

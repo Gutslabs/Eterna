@@ -113,6 +113,25 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
   });
 
   const bufferEvent = (run: RunState, event: WireAgentEvent): void => {
+    const previous = run.events[run.events.length - 1];
+    if (previous?.type === "content_delta" && event.type === "content_delta") {
+      run.events[run.events.length - 1] = {
+        ...previous,
+        delta: previous.delta + event.delta,
+      };
+      return;
+    }
+    if (
+      previous?.type === "reasoning_delta" &&
+      event.type === "reasoning_delta"
+    ) {
+      run.events[run.events.length - 1] = {
+        ...previous,
+        delta: previous.delta + event.delta,
+      };
+      return;
+    }
+
     if (run.events.length >= maxBufferedEvents) {
       run.truncated = true;
       return;

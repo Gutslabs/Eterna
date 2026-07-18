@@ -678,6 +678,54 @@ describe("ChatAdapter", () => {
       expect(adapter.getStatus()).toBe("idle");
     });
 
+    it("restores a suffix present in finalOutput but missing from the stream", () => {
+      adapter.processEvent({
+        type: "content_delta",
+        delta: "They are both killing Base, and it",
+      });
+      adapter.processEvent({
+        type: "execution_complete",
+        finalOutput: "They are both killing Base, and it needs to stop.",
+        metrics: {
+          tokensUsed: 0,
+          promptTokens: 0,
+          completionTokens: 0,
+          itemCount: 0,
+          maxTurns: 10,
+          duration: 0,
+          startTime: Date.now(),
+        },
+      });
+
+      expect(adapter.getMessages()[0]?.parts).toEqual([
+        {
+          type: "text",
+          text: "They are both killing Base, and it needs to stop.",
+        },
+      ]);
+    });
+
+    it("does not overwrite streamed text when finalOutput disagrees", () => {
+      adapter.processEvent({ type: "content_delta", delta: "Visible answer" });
+      adapter.processEvent({
+        type: "execution_complete",
+        finalOutput: "Different runner output",
+        metrics: {
+          tokensUsed: 0,
+          promptTokens: 0,
+          completionTokens: 0,
+          itemCount: 0,
+          maxTurns: 10,
+          duration: 0,
+          startTime: Date.now(),
+        },
+      });
+
+      expect(adapter.getMessages()[0]?.parts).toEqual([
+        { type: "text", text: "Visible answer" },
+      ]);
+    });
+
     it("should reset with initial messages", () => {
       const initialMessages: UIMessage[] = [
         {

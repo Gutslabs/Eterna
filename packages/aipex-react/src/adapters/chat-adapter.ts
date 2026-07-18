@@ -223,6 +223,7 @@ export class ChatAdapter {
         break;
 
       case "execution_complete":
+        this.reconcileFinalOutput(event.finalOutput);
         this.updateStatus("idle");
         this.state.currentAssistantMessageId = null;
         this.toolsAddedSinceLastText = false;
@@ -409,6 +410,32 @@ export class ChatAdapter {
 
       return { ...message, parts };
     });
+  }
+
+  private reconcileFinalOutput(finalOutput: string): void {
+    if (!finalOutput || !this.state.currentAssistantMessageId) {
+      return;
+    }
+
+    const current = this.state.messages.find(
+      (message) => message.id === this.state.currentAssistantMessageId,
+    );
+    if (!current) {
+      return;
+    }
+
+    const streamedText = current.parts
+      .filter((part): part is UITextPart => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    if (!streamedText || !finalOutput.startsWith(streamedText)) {
+      return;
+    }
+
+    const missingSuffix = finalOutput.slice(streamedText.length);
+    if (missingSuffix) {
+      this.appendContentDelta(missingSuffix);
+    }
   }
 
   private appendReasoningDelta(delta: string): void {

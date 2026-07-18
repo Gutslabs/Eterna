@@ -143,7 +143,7 @@ describe("createChatHost", () => {
     });
     const run = host.getCurrentRun();
     expect(run?.completedDetached).toBe(true);
-    expect(run?.events).toHaveLength(2);
+    expect(run?.events).toEqual([delta("partial rest")]);
   });
 
   it("replays the buffer to a late-attaching port and keeps streaming live", async () => {
@@ -184,6 +184,72 @@ describe("createChatHost", () => {
     });
     const liveEvents = second.sent.filter((m) => m.type === "event");
     expect(liveEvents).toHaveLength(1);
+  });
+
+  it("coalesces adjacent stream deltas in the replay buffer", async () => {
+    const scripted = scriptedAgent();
+    const host = createChatHost({
+      createAgent: async () => scripted.agent,
+      maxBufferedEvents: 4,
+    });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
+    scripted.push({ type: "session_created", sessionId: "s1" });
+    scripted.push({ type: "reasoning_delta", delta: "Checking " });
+    scripted.push({ type: "reasoning_delta", delta: "the response." });
+    scripted.push(delta("They are both killing Base"));
+    scripted.push(delta(", and it"));
+    scripted.push(delta(" needs to stop."));
+    scripted.push({
+      type: "execution_complete",
+      finalOutput: "They are both killing Base, and it needs to stop.",
+      metrics: {
+        tokensUsed: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        itemCount: 0,
+        maxTurns: 10,
+        duration: 0,
+        startTime: Date.now(),
+      },
+    });
+    scripted.push(null);
+
+    await vi.waitFor(() => {
+      expect(host.getCurrentRun()?.done).toBe(true);
+    });
+
+    const run = host.getCurrentRun();
+    expect(run?.truncated).toBe(false);
+    expect(run?.events).toHaveLength(4);
+    expect(run?.events[1]).toEqual({
+      type: "reasoning_delta",
+      delta: "Checking the response.",
+    });
+    expect(run?.events[2]).toEqual(
+      delta("They are both killing Base, and it needs to stop."),
+    );
+
+    const liveDeltas = ui.sent.filter(
+      (message) =>
+        message.type === "event" && message.event.type === "content_delta",
+    );
+    expect(liveDeltas).toHaveLength(3);
+    expect(
+      liveDeltas.map((message) =>
+        message.type === "event" && message.event.type === "content_delta"
+          ? message.event.delta
+          : "",
+      ),
+    ).toEqual(["They are both killing Base", ", and it", " needs to stop."]);
   });
 
   it("rejects a second turn while one is active", async () => {

@@ -29,6 +29,7 @@ import {
   isByokConfigured,
   isCatGptGatewayModel,
   isChatGptModel,
+  isClaudeGatewayModel,
   isGeminiGatewayModel,
   isXaiGatewayModel,
   normalizeCodexModel,
@@ -58,10 +59,11 @@ export function createBrowserModel(settings: AppSettings) {
   if (
     settings.aiModel &&
     (isGeminiGatewayModel(settings.aiModel) ||
-      isXaiGatewayModel(settings.aiModel))
+      isXaiGatewayModel(settings.aiModel) ||
+      isClaudeGatewayModel(settings.aiModel))
   ) {
-    // CLIProxyAPI path – local OAuth proxy serving Gemini (Google account)
-    // and Grok (Grok Build account) as one OpenAI-compatible endpoint
+    // CLIProxyAPI path – local OAuth proxy serving Gemini (Antigravity),
+    // Grok (Grok Build) and Claude (Claude Code) as one OpenAI-compatible API
     return aisdk(createGeminiGatewayProvider()(settings.aiModel));
   }
 
@@ -132,9 +134,36 @@ export async function loadParallelAgentEnabled(): Promise<boolean> {
   );
 }
 
+/**
+ * Whether to auto-attach a viewport screenshot to every message so the model
+ * always sees the user's current screen. Privacy-first default OFF.
+ */
+export async function loadAutoScreenshotEnabled(): Promise<boolean> {
+  return (
+    (await chromeStorageAdapter.load(STORAGE_KEYS.AUTO_ATTACH_SCREENSHOT)) ===
+    true
+  );
+}
+
 /** Browser-specific agent configuration shared by UI and background host. */
 export const BROWSER_AGENT_CONFIG = {
   instructions: SYSTEM_PROMPT,
   name: "Eterna Browser Assistant",
   maxTurns: 2000,
+  /**
+   * Conversation compaction. Without it, every turn re-sends the whole growing
+   * history — and each user message carries a ~12k-char page block — so a long
+   * sidebar session balloons the per-request bill and rots context. Triggered by
+   * the token watermark once a turn's prompt crosses it (with an item-count
+   * fallback for gateways that don't report usage); protectRecentMessages keeps
+   * the latest exchanges and their tool pairs intact. The summarizer model is
+   * supplied in chat-host-init (same gateway as the chat model).
+   */
+  compression: {
+    summarizeAfterItems: 30,
+    keepRecentItems: 16,
+    protectRecentMessages: 8,
+    tokenWatermark: 120_000,
+    maxSummaryLength: 2000,
+  },
 } as const;

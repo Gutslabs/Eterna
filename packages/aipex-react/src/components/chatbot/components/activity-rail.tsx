@@ -21,20 +21,16 @@ import {
   totalToolDurationMs,
 } from "./activity-steps";
 
-/**
- * Styling follows the Eterna Activity Rail spec (Thinking & Tool Calls,
- * Variant A) verbatim — exact hex tokens, keyframes and type scale. The
- * sidebar is dark-only, so the spec's fixed palette is intentional.
- */
+/** Activity rail styling uses the host application's semantic theme tokens. */
 const RAIL_STYLES = `
 @keyframes rail-shimmer {
   0%   { background-position: 200% center; }
   100% { background-position: -200% center; }
 }
 @keyframes rail-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.30); }
-  70%  { box-shadow: 0 0 0 7px rgba(255,255,255,0); }
-  100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--foreground) 30%, transparent); }
+  70%  { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 @keyframes rail-bar {
   0%   { transform: translateX(-100%); }
@@ -42,8 +38,8 @@ const RAIL_STYLES = `
 }
 
 .activity-rail {
-  border: 1px solid #232327;
-  background: #131315;
+  border: 1px solid var(--border);
+  background: var(--card);
   border-radius: 12px;
   padding: 11px 12px 13px;
 }
@@ -54,13 +50,13 @@ const RAIL_STYLES = `
 }
 .rail-pulse-dot {
   width: 7px; height: 7px; border-radius: 50%;
-  background: #e8e8e8;
+  background: var(--foreground);
   flex-shrink: 0;
   animation: rail-pulse 1.6s ease-out infinite;
 }
 .rail-status {
   font-size: 12.5px; font-weight: 500;
-  background: linear-gradient(90deg, #71717a 35%, #fafafa 50%, #71717a 65%);
+  background: linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
@@ -69,12 +65,12 @@ const RAIL_STYLES = `
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .rail-status-static {
-  font-size: 12.5px; font-weight: 500; color: #b9b9bf;
+  font-size: 12.5px; font-weight: 500; color: var(--foreground);
 }
 .rail-time {
   margin-left: auto;
   font-family: ui-monospace, monospace;
-  font-size: 10.5px; color: #5c5c62;
+  font-size: 10.5px; color: var(--muted-foreground);
   flex-shrink: 0;
 }
 
@@ -90,27 +86,27 @@ const RAIL_STYLES = `
 }
 .rail-line {
   width: 1px; flex: 1;
-  background: #26262a;
+  background: var(--border);
   margin-top: 3px;
 }
 .rail-content { padding-bottom: 12px; min-width: 0; flex: 1; }
 
 .rail-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
-.rail-dot.done    { background: #52525a; }
-.rail-dot.active  { background: #e8e8e8; animation: rail-pulse 1.6s ease-out infinite; }
-.rail-dot.error   { background: #b07070; }
-.rail-dot.pending { background: transparent; border: 1px solid #3a3a40; margin-top: 4px; }
+.rail-dot.done    { background: var(--muted-foreground); }
+.rail-dot.active  { background: var(--foreground); animation: rail-pulse 1.6s ease-out infinite; }
+.rail-dot.error   { background: var(--destructive); }
+.rail-dot.pending { background: transparent; border: 1px solid var(--border); margin-top: 4px; }
 
 .rail-step-title {
   font-size: 12px; font-weight: 500;
-  color: #a8a8ae; margin-bottom: 2px;
+  color: var(--foreground); margin-bottom: 2px;
 }
 .rail-step-body {
   font-size: 11.5px; line-height: 1.5;
-  color: #5f5f66;
+  color: var(--muted-foreground);
 }
 .rail-step-pending {
-  font-size: 12px; color: #4e4e54;
+  font-size: 12px; color: var(--muted-foreground);
   padding-top: 2px;
 }
 
@@ -123,40 +119,40 @@ const RAIL_STYLES = `
 }
 .rail-tool-chip {
   font-family: ui-monospace, monospace;
-  font-size: 11px; color: #d6d6da;
-  background: #1f1f24;
-  border: 1px solid #2c2c32;
+  font-size: 11px; color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 2px 7px;
   flex-shrink: 0;
 }
-.rail-tool-chip.error { border-color: #4a3434; }
+.rail-tool-chip.error { border-color: var(--destructive); }
 .rail-tool-target {
-  font-size: 11px; color: #6e6e74;
+  font-size: 11px; color: var(--muted-foreground);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .rail-tool-time {
   margin-left: auto;
   font-family: ui-monospace, monospace;
-  font-size: 10.5px; color: #5c5c62;
+  font-size: 10.5px; color: var(--muted-foreground);
   flex-shrink: 0;
 }
 .rail-error-text {
-  font-size: 11px; color: #9a6a6a;
+  font-size: 11px; color: var(--destructive);
   margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 .rail-progress {
   height: 2px; border-radius: 2px;
-  background: #222226;
+  background: var(--muted);
   overflow: hidden;
   max-width: 140px;
 }
 .rail-progress-glow {
   height: 100%; width: 40%;
   border-radius: 2px;
-  background: linear-gradient(90deg, transparent, #c9c9cf, transparent);
+  background: linear-gradient(90deg, transparent, var(--foreground), transparent);
   animation: rail-bar 1.3s ease-in-out infinite;
 }
 
@@ -165,30 +161,30 @@ const RAIL_STYLES = `
   width: 100%;
   padding: 8px 11px;
   border-radius: 10px;
-  border: 1px solid #232327;
-  background: #131315;
+  border: 1px solid var(--border);
+  background: var(--card);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
   font: inherit; text-align: left;
 }
 .rail-collapsed:hover {
-  border-color: #36363c;
-  background: #18181b;
+  border-color: var(--ring);
+  background: var(--accent);
 }
-.rail-collapsed-label { font-size: 12px; color: #b9b9bf; flex-shrink: 0; }
+.rail-collapsed-label { font-size: 12px; color: var(--foreground); flex-shrink: 0; }
 .rail-collapsed-chip {
   font-family: ui-monospace, monospace;
-  font-size: 10.5px; color: #6e6e74;
-  background: #1d1d21;
+  font-size: 10.5px; color: var(--muted-foreground);
+  background: var(--muted);
   border-radius: 5px;
   padding: 2px 6px;
   flex-shrink: 0;
 }
-.rail-collapsed-more { font-size: 10.5px; color: #6e6e74; flex-shrink: 0; }
+.rail-collapsed-more { font-size: 10.5px; color: var(--muted-foreground); flex-shrink: 0; }
 .rail-collapsed-time {
   margin-left: auto;
   font-family: ui-monospace, monospace;
-  font-size: 10.5px; color: #5c5c62;
+  font-size: 10.5px; color: var(--muted-foreground);
   flex-shrink: 0;
 }
 
@@ -208,7 +204,7 @@ const RAIL_STYLES = `
     background: none;
     -webkit-background-clip: initial;
     background-clip: initial;
-    color: #c9c9cf;
+    color: var(--foreground);
   }
   .rail-pulse-dot, .rail-dot.active { animation: none; }
   .rail-progress-glow { animation: none; width: 40%; }
@@ -225,11 +221,11 @@ function SparkIcon() {
       height="12"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#8a8a90"
+      stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       aria-hidden="true"
-      style={{ flexShrink: 0 }}
+      style={{ color: "var(--muted-foreground)", flexShrink: 0 }}
     >
       <path d={SPARK_PATH} />
     </svg>
@@ -500,9 +496,13 @@ export const ActivityRail = memo(function ActivityRail({
       <ChevronDownIcon
         size={11}
         strokeWidth={2.5}
-        color="#5c5c62"
+        color="currentColor"
         aria-hidden="true"
-        style={{ flexShrink: 0, marginLeft: totalLabel ? 0 : "auto" }}
+        style={{
+          color: "var(--muted-foreground)",
+          flexShrink: 0,
+          marginLeft: totalLabel ? 0 : "auto",
+        }}
       />
     </button>
   );
@@ -536,9 +536,14 @@ export const ActivityRail = memo(function ActivityRail({
           <ChevronDownIcon
             size={11}
             strokeWidth={2.5}
-            color="#5c5c62"
+            color="currentColor"
             aria-hidden="true"
-            style={{ flexShrink: 0, marginLeft: "auto", rotate: "180deg" }}
+            style={{
+              color: "var(--muted-foreground)",
+              flexShrink: 0,
+              marginLeft: "auto",
+              rotate: "180deg",
+            }}
           />
         </button>
       ) : (

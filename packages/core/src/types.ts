@@ -108,6 +108,13 @@ export interface ChatOptions {
    * multimodal UserMessageItem sent to the model's vision path.
    */
   images?: ImageInput[];
+  /**
+   * A data-URL screenshot of the user's current viewport, auto-attached so the
+   * model can see what's on screen this turn. Unlike `images`, it is injected
+   * ONLY into the model input (via callModelInputFilter) and is NEVER persisted
+   * to the session — so per-turn screenshots never accumulate in history.
+   */
+  ambientImage?: string;
 }
 
 export interface AgentMetrics {

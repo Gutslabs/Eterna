@@ -128,6 +128,82 @@ export function shapeScreenshotItems(
 }
 
 /**
+ * Attach the user's current viewport screenshot to their OWN most recent
+ * message (merged into its content), for the "always show the model what's on
+ * screen" feature. It is NOT appended as a separate trailing message: the web
+ * gateway (catgpt/ChatGPT web) forwards only the LAST user message to ChatGPT,
+ * so a standalone screenshot message would become "the last message" and shadow
+ * (drop) the user's actual question. Runs inside `callModelInputFilter`, which
+ * shapes only the per-model-call input and never the stored session — so the
+ * screenshot reaches the model every turn yet is never persisted (history never
+ * balloons). Falls back to a standalone transient message only when there is no
+ * user message to attach to.
+ */
+export function appendAmbientScreenshot(
+  items: AgentInputItem[],
+  imageDataUrl: string | undefined,
+): AgentInputItem[] {
+  if (!imageDataUrl || !imageDataUrl.startsWith("data:image/")) {
+    return items;
+  }
+
+  const imagePart = {
+    type: "input_image",
+    image: imageDataUrl,
+    detail: "auto",
+  };
+
+  // Attach the screenshot to the user's OWN most recent message so the image
+  // rides WITH their prompt — never as a separate trailing message. This is
+  // critical for the web gateway (catgpt/ChatGPT web), which forwards ONLY the
+  // last user message to ChatGPT: a standalone screenshot message would become
+  // "the last user message" and shadow (drop) the user's actual question. Skip
+  // transient screenshot messages so we land on the real prompt. Runs in
+  // callModelInputFilter, so it shapes only the model-call input — never
+  // persisted, so the stored prompt stays text-only.
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i] as {
+      type?: string;
+      role?: string;
+      content?: unknown;
+      providerData?: Record<string, unknown>;
+    };
+    if (
+      item.type === "message" &&
+      item.role === "user" &&
+      !item.providerData?.[TRANSIENT_SCREENSHOT_MARKER]
+    ) {
+      const content = item.content;
+      const mergedContent = Array.isArray(content)
+        ? [...content, imagePart]
+        : [
+            {
+              type: "input_text",
+              text: typeof content === "string" ? content : "",
+            },
+            imagePart,
+          ];
+      const next = items.slice();
+      next[i] = { ...item, content: mergedContent } as AgentInputItem;
+      return next;
+    }
+  }
+
+  // No user message to attach to — append a standalone transient one.
+  const ambientMessage: AgentInputItem = {
+    type: "message",
+    role: "user",
+    content: [
+      { type: "input_text", text: "The user's current screen:" },
+      imagePart,
+    ],
+    providerData: { [TRANSIENT_SCREENSHOT_MARKER]: true },
+  } as AgentInputItem;
+
+  return [...items, ambientMessage];
+}
+
+/**
  * Remove transient screenshot user-image messages from items.
  * Used before persistence or compression.
  */

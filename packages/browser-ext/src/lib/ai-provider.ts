@@ -354,18 +354,19 @@ export function isCatGptGatewayModel(model: string | undefined): boolean {
 }
 
 /**
- * Gemini via a local CLIProxyAPI instance (OAuth, backed by the user's Google
- * account / AI Pro subscription). Unlike the ChatGPT/Claude web gateways this
- * is a genuine OpenAI-compatible endpoint — full messages, tools and streaming
- * are kept. The api key must match one of the proxy config's `api-keys`.
+ * Gemini via a local CLIProxyAPI instance, backed by the user's Google account
+ * through Antigravity OAuth (`cliproxyapi -antigravity-login`). Google retired
+ * the old gemini-cli / Code Assist backend on 2026-06-18, so the previous
+ * gemini-cli OAuth and the gemini-2.5 / *-preview model ids are gone; the
+ * Antigravity catalog serves Gemini 3.x instead. Unlike the ChatGPT/Claude web
+ * gateways this is a genuine OpenAI-compatible endpoint — full messages, tools
+ * and streaming are kept. The api key must match one of the proxy `api-keys`.
  */
 const GEMINI_GATEWAY_URL = "http://localhost:8317/v1";
 
 export const GEMINI_GATEWAY_MODELS = [
-  "gemini-3.1-pro-preview",
-  "gemini-3-pro-preview",
-  "gemini-2.5-pro",
-  "gemini-2.5-flash",
+  "gemini-3.1-pro-low",
+  "gemini-3-flash",
 ] as const;
 
 export function isGeminiGatewayModel(model: string | undefined): boolean {
@@ -392,18 +393,40 @@ export function isXaiGatewayModel(model: string | undefined): boolean {
 }
 
 /**
+ * Claude via the same local CLIProxyAPI instance, backed by the user's Claude
+ * Code OAuth subscription (`cliproxyapi -claude-login`). Served from the same
+ * :8317 endpoint as Gemini and Grok, so it shares createGeminiGatewayProvider
+ * — geminiGatewayFetch only rewrites bodies whose model starts with "gemini",
+ * so Claude requests pass through untouched. This is the genuine-API path
+ * (full messages, tools, streaming, parallel subagents), distinct from the
+ * web-UI-driven `claude-browser` gateway.
+ */
+export const CLAUDE_GATEWAY_MODELS = [
+  "claude-opus-4-8",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5-20251001",
+] as const;
+
+export function isClaudeGatewayModel(model: string | undefined): boolean {
+  return (
+    !!model && (CLAUDE_GATEWAY_MODELS as readonly string[]).includes(model)
+  );
+}
+
+/**
  * Whether a model can fan out into concurrent background subagents.
  *
  * Only true for real API/OAuth endpoints that accept parallel requests:
- * Gemini and Grok (CLIProxyAPI :8317) and Codex/ChatGPT (OAuth Responses
- * API). The web gateways (catgpt-browser, claude-browser) drive a single
- * shared web-UI thread and cannot run requests in parallel, so subagent
+ * Gemini, Grok and Claude (CLIProxyAPI :8317) and Codex/ChatGPT (OAuth
+ * Responses API). The web gateways (catgpt-browser, claude-browser) drive a
+ * single shared web-UI thread and cannot run requests in parallel, so subagent
  * orchestration is disabled there.
  */
 export function supportsParallelSubagents(model: string | undefined): boolean {
   return (
     isGeminiGatewayModel(model) ||
     isXaiGatewayModel(model) ||
+    isClaudeGatewayModel(model) ||
     isChatGptModel(model)
   );
 }
@@ -591,14 +614,10 @@ export async function catgptGatewayFetch(
     }),
   });
   if (!response.ok) {
-    const detail = await response
-      .clone()
-      .text()
-      .catch(() => "");
-    console.error(
-      `[catgpt-gateway] chat completion failed: ${response.status}`,
-      detail,
-    );
+    console.error("[catgpt-gateway] chat completion failed", {
+      status: response.status,
+      requestId: response.headers.get("x-request-id") ?? undefined,
+    });
     return response;
   }
   const json = (await response.json().catch(() => null)) as {
@@ -694,9 +713,11 @@ export async function geminiGatewayFetch(
 }
 
 /**
- * Provider for Gemini through the local gemini-cli OAuth proxy. The proxy
- * ignores the API key (any placeholder works) and authenticates to Google
- * using the cached gemini-cli OAuth credentials (the user's Google account).
+ * Provider for the local CLIProxyAPI instance (:8317), which serves Gemini
+ * (Antigravity OAuth), Grok (Grok Build OAuth) and Claude (Claude Code OAuth)
+ * as one OpenAI-compatible endpoint. The api key must match one of the proxy
+ * config's `api-keys`; geminiGatewayFetch only rewrites gemini-prefixed bodies,
+ * so Grok and Claude requests pass through untouched.
  */
 export function createGeminiGatewayProvider() {
   return createOpenAICompatible({
@@ -818,17 +839,11 @@ async function codexFetch(
 
   const response = await globalThis.fetch(input, { ...init, headers, body });
   if (!response.ok) {
-    const detail = await response
-      .clone()
-      .text()
-      .catch(() => "");
-    console.error(
-      `[codex] request failed: ${response.status} ${response.statusText}`,
-      "\n--- request body ---\n",
-      typeof body === "string" ? body : "(non-string body)",
-      "\n--- response ---\n",
-      detail,
-    );
+    console.error("[codex] request failed", {
+      status: response.status,
+      statusText: response.statusText,
+      requestId: response.headers.get("x-request-id") ?? undefined,
+    });
   }
   return response;
 }

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignoreBinaries": ["prek"],
+  "workspaces": {
+    "packages/core": {
+      "entry": ["src/index.ts", "examples/*.ts"],
+      "project": ["src/**/*.ts", "examples/*.ts"]
+    },
+    "packages/dom-snapshot": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "packages/browser-runtime": {
+      "entry": ["src/index.ts", "src/hooks/index.ts"],
+      "project": ["src/**/*.{ts,tsx,js}"]
+    },
+    "packages/aipex-react": {
+      "entry": [
+        "src/index.ts",
+        "src/adapters/*.ts",
+        "src/hooks/*.ts",
+        "src/components/chatbot/*.{ts,tsx}",
+        "src/components/ai-elements/*.{ts,tsx}",
+        "src/components/*/index.{ts,tsx}",
+        "src/types/**/*.ts",
+        "src/i18n/*.ts",
+        "src/theme/*.ts"
+      ],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "packages/browser-ext": {
+      "entry": [
+        "src/background.ts",
+        "src/content.tsx",
+        "src/pages/sidepanel/index.tsx",
+        "src/pages/options/index.tsx",
+        "vite.config.ts"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"]
+    },
+    "mcp-bridge": {
+      "entry": ["src/bridge.ts", "src/cli.ts", "src/daemon.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "services/twitter-service": {
+      "entry": ["server.ts"],
+      "project": ["server.ts"]
+    }
+  }
+}

@@ -6,7 +6,7 @@ import { getActiveTab } from "./tab-utils";
 export const takeSnapshotTool = tool({
   name: "take_snapshot",
   description:
-    "Take an accessibility snapshot of the current page. Returns a tree of interactive elements with UIDs for interaction.",
+    "Take a full accessibility snapshot of the current page — the whole tree of interactive elements with uids. Prefer search_elements to find specific elements (it's faster and scoped); use this when you need the entire interactive tree. uids go stale when the page changes, so re-snapshot after navigation.",
   parameters: z.object({}),
   execute: async () => {
     const tab = await getActiveTab();

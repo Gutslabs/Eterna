@@ -473,9 +473,10 @@ describe("createEmptyToolArgsFinalizer", () => {
 });
 
 describe("supportsParallelSubagents", () => {
-  it("is true for gemini, grok and codex models", () => {
-    expect(supportsParallelSubagents("gemini-3.1-pro-preview")).toBe(true);
+  it("is true for gemini, grok, claude and codex models", () => {
+    expect(supportsParallelSubagents("gemini-3.1-pro-low")).toBe(true);
     expect(supportsParallelSubagents("grok-4.3")).toBe(true);
+    expect(supportsParallelSubagents("claude-opus-4-8")).toBe(true);
     expect(supportsParallelSubagents("gpt-5.5")).toBe(true);
   });
 
@@ -516,7 +517,7 @@ describe("geminiGatewayFetch reasoning_effort injection", () => {
   };
 
   it("injects reasoning_effort for gemini models", async () => {
-    await send({ model: "gemini-3.1-pro-preview", messages: [] });
+    await send({ model: "gemini-3.1-pro-low", messages: [] });
     expect(lastRequestBody().reasoning_effort).toBe("low");
   });
 
@@ -527,7 +528,7 @@ describe("geminiGatewayFetch reasoning_effort injection", () => {
 
   it("does not override an explicit reasoning_effort", async () => {
     await send({
-      model: "gemini-2.5-pro",
+      model: "gemini-3.1-pro-low",
       messages: [],
       reasoning_effort: "high",
     });
@@ -583,7 +584,7 @@ describe("catgptGatewayFetch conversation routing", () => {
 
   it("sends a fresh chat as a new conversation with only the last user message", async () => {
     await send({
-      model: "catgpt-browser::GPT-5.5",
+      model: "catgpt-browser::GPT-5.6 Sol|High",
       stream: true,
       tools: [{ type: "function" }],
       messages: [
@@ -594,6 +595,7 @@ describe("catgptGatewayFetch conversation routing", () => {
 
     expect(lastRequestUrl()).toBe("http://localhost:8000/v1/chat/completions");
     const body = lastRequestBody();
+    expect(body.model).toBe("catgpt-browser::GPT-5.6 Sol|High");
     expect(body.messages).toEqual([userMsg("merhaba")]);
     expect(body.stream).toBe(false);
     expect(body.tools).toBeUndefined();

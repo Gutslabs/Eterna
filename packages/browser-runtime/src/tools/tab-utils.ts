@@ -1,12 +1,37 @@
 /**
- * Get the currently active tab
+ * Get the currently active tab.
+ *
+ * The agent runs in the background service worker, which has no "current
+ * window". `chrome.tabs.query({ currentWindow: true })` is unreliable there —
+ * it can return nothing when a side panel (or any non-tab surface) holds focus,
+ * which made tools like capture_screenshot fail with "No active tab found".
+ * Resolve the last-focused *normal* browser window's active tab instead, then
+ * fall back to the older queries.
+ *
  * @throws Error if no active tab is found
  */
 export async function getActiveTab(): Promise<chrome.tabs.Tab> {
-  const [tab] = await chrome.tabs.query({
+  let [tab] = await chrome.tabs.query({
     active: true,
-    currentWindow: true,
+    lastFocusedWindow: true,
   });
+
+  if (!tab?.id) {
+    try {
+      const win = await chrome.windows.getLastFocused({
+        windowTypes: ["normal"],
+      });
+      if (win.id !== undefined) {
+        [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
+      }
+    } catch {
+      // No normal window available — fall through to the legacy query.
+    }
+  }
+
+  if (!tab?.id) {
+    [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  }
 
   if (!tab?.id) {
     throw new Error("No active tab found");

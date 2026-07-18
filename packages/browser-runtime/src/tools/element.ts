@@ -20,7 +20,7 @@ async function getElementByUid(
     snapshot = await snapshotProvider.createSnapshot(tabId);
     if (!snapshot) {
       throw new Error(
-        `Failed to create snapshot for tab ${tabId}. Please ensure the tab is accessible.`,
+        `Could not read the page structure for tab ${tabId} — it may still be loading or be a restricted page. Try search_elements again, or switch to an accessible tab.`,
       );
     }
   }
@@ -45,14 +45,15 @@ async function getElementByUid(
       return new SmartElementHandle(tabId, node, node.backendDOMNodeId);
     }
     throw new Error(
-      `backendDOMNodeId not available for CDP mode. This should not happen.`,
+      "Could not resolve this element on the page. Call search_elements again to get fresh uids, then retry.",
     );
   }
 }
 
 export const clickTool = tool({
   name: "click",
-  description: "Click an element using its unique UID from a snapshot",
+  description:
+    "Click an element by its uid. The uid MUST come from the most recent search_elements (or take_snapshot) on this tab — uids go stale when the page changes, so if the element isn't found, call search_elements again for fresh uids. Prefer this over the coordinate-based computer tool when the element is in a snapshot.",
   parameters: z.object({
     tabId: z.number().describe("The ID of the tab to click on"),
     uid: z
@@ -71,7 +72,7 @@ export const clickTool = tool({
       handle = await getElementByUid(tabId, uid);
       if (!handle) {
         throw new Error(
-          "Element not found in current snapshot. Call take_snapshot first.",
+          "Element not found in the current snapshot — the page may have changed. Call search_elements again to get a current uid, then retry.",
         );
       }
 
@@ -91,7 +92,8 @@ export const clickTool = tool({
 
 export const fillElementByUidTool = tool({
   name: "fill_element_by_uid",
-  description: "Fill an input element using its unique UID from a snapshot",
+  description:
+    "Fill an input element by its uid. The uid MUST come from the most recent search_elements (or take_snapshot) on this tab; if it's stale (element not found), call search_elements again. Prefer this over coordinate-based typing when the field is in a snapshot.",
   parameters: z.object({
     tabId: z.number().describe("The ID of the tab to fill the element in"),
     uid: z.string().describe("The unique identifier of the element to fill"),
@@ -104,7 +106,7 @@ export const fillElementByUidTool = tool({
       handle = await getElementByUid(tabId, uid);
       if (!handle) {
         throw new Error(
-          "Element not found in current snapshot. Call take_snapshot first.",
+          "Element not found in the current snapshot — the page may have changed. Call search_elements again to get a current uid, then retry.",
         );
       }
 
@@ -124,7 +126,8 @@ export const fillElementByUidTool = tool({
 
 export const hoverElementByUidTool = tool({
   name: "hover_element_by_uid",
-  description: "Hover over an element using its unique UID from a snapshot",
+  description:
+    "Hover over an element by its uid. The uid MUST come from the most recent search_elements (or take_snapshot) on this tab; re-run search_elements if the uid is stale.",
   parameters: z.object({
     tabId: z.number().describe("The ID of the tab to hover over"),
     uid: z
@@ -138,7 +141,7 @@ export const hoverElementByUidTool = tool({
       handle = await getElementByUid(tabId, uid);
       if (!handle) {
         throw new Error(
-          "Element not found in current snapshot. Call take_snapshot first.",
+          "Element not found in the current snapshot — the page may have changed. Call search_elements again to get a current uid, then retry.",
         );
       }
 
@@ -173,7 +176,7 @@ export const getEditorValueTool = tool({
       handle = await getElementByUid(tabId, uid);
       if (!handle) {
         throw new Error(
-          "Element not found in current snapshot. Call take_snapshot first.",
+          "Element not found in the current snapshot — the page may have changed. Call search_elements again to get a current uid, then retry.",
         );
       }
 
@@ -203,7 +206,7 @@ export const getEditorValueTool = tool({
 export const fillFormTool = tool({
   name: "fill_form",
   description:
-    "Fill multiple form elements at once using their UIDs from a snapshot",
+    "Fill multiple form fields at once by their uids. All uids MUST come from the most recent search_elements (or take_snapshot) on this tab; if any is stale, re-run search_elements for fresh uids. Prefer this over filling fields one at a time.",
   parameters: z.object({
     tabId: z.number().describe("The ID of the tab to fill the elements in"),
     elements: z
@@ -235,7 +238,7 @@ export const fillFormTool = tool({
             uid: element.uid,
             success: false,
             error:
-              "Element not found in current snapshot. Call take_snapshot first.",
+              "Element not found in the current snapshot — the page may have changed. Call search_elements again to get a current uid, then retry.",
           });
           continue;
         }

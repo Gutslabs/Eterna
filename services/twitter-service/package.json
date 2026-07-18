@@ -6,14 +6,15 @@
   "description": "Thin local HTTP wrapper around CoinTheHat/twitter-scraper so the Eterna extension can search X/Twitter in the background.",
   "scripts": {
     "start": "tsx server.ts",
-    "dev": "tsx watch server.ts"
+    "dev": "tsx watch server.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "twitter-scraper": "https://github.com/CoinTheHat/twitter-scraper/archive/refs/heads/main.tar.gz",
-    "dotenv": "^17.2.3"
+    "twitter-scraper": "https://github.com/CoinTheHat/twitter-scraper/archive/22839041c7d949afeef979f74d51f7710f2c8127.tar.gz",
+    "dotenv": "^17.2.3",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
-    "tsx": "^4.19.2",
     "typescript": "^5.9.3",
     "@types/node": "^22.10.0"
   }

@@ -1,6 +1,7 @@
 import type { AgentInputItem } from "@openai/agents";
 import { describe, expect, it } from "vitest";
 import {
+  appendAmbientScreenshot,
   isTransientScreenshotItem,
   pruneTransientScreenshotItems,
   shapeScreenshotItems,
@@ -486,6 +487,104 @@ describe("pruneTransientScreenshotItems", () => {
     const items = [createUserMessage("a"), createUserMessage("b")];
     const pruned = pruneTransientScreenshotItems(items);
     expect(pruned.length).toBe(2);
+  });
+});
+
+describe("appendAmbientScreenshot", () => {
+  const SHOT = "data:image/png;base64,iVBORw0KGgoAAAANSU=";
+
+  it("returns the items unchanged when there is no valid image", () => {
+    const items = [createUserMessage("hi")];
+    expect(appendAmbientScreenshot(items, undefined)).toBe(items);
+    expect(appendAmbientScreenshot(items, "not-a-data-url")).toBe(items);
+  });
+
+  it("merges the screenshot INTO the last user message (string content), not a new trailing message", () => {
+    const items = [createUserMessage("what does this say?")];
+    const out = appendAmbientScreenshot(items, SHOT);
+
+    // No extra trailing message: the image must ride WITH the prompt so the web
+    // gateway (which forwards only the last user message) keeps the question.
+    expect(out.length).toBe(1);
+    const msg = out[0] as {
+      role: string;
+      content: Array<{ type: string; text?: string; image?: string }>;
+    };
+    expect(msg.role).toBe("user");
+    expect(Array.isArray(msg.content)).toBe(true);
+    expect(msg.content.find((c) => c.type === "input_text")?.text).toBe(
+      "what does this say?",
+    );
+    expect(msg.content.find((c) => c.type === "input_image")?.image).toBe(SHOT);
+  });
+
+  it("appends the image to an existing array-content user message", () => {
+    const items = [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "hi" }],
+      } as AgentInputItem,
+    ];
+    const out = appendAmbientScreenshot(items, SHOT);
+    expect(out.length).toBe(1);
+    const content = (out[0] as { content: Array<{ type: string }> }).content;
+    expect(content.length).toBe(2);
+    expect(content[1]?.type).toBe("input_image");
+  });
+
+  it("attaches to the real prompt, skipping transient screenshot messages", () => {
+    const transient: AgentInputItem = {
+      type: "message",
+      role: "user",
+      content: [
+        {
+          type: "input_image",
+          image: "data:image/png;base64,AAA",
+          detail: "auto",
+        },
+      ],
+      providerData: { [TRANSIENT_SCREENSHOT_MARKER]: true },
+    } as AgentInputItem;
+    const items = [createUserMessage("real question"), transient];
+
+    const out = appendAmbientScreenshot(items, SHOT);
+    expect(out.length).toBe(2);
+    // Merged into the prompt (index 0)…
+    const prompt = out[0] as {
+      content: Array<{ type: string; image?: string }>;
+    };
+    expect(prompt.content.find((c) => c.type === "input_image")?.image).toBe(
+      SHOT,
+    );
+    // …and the transient message is left untouched.
+    expect(out[1]).toBe(transient);
+  });
+
+  it("falls back to a standalone transient message when there is no user message", () => {
+    const items = [createNonScreenshotToolResult()];
+    const out = appendAmbientScreenshot(items, SHOT);
+    expect(out.length).toBe(2);
+    const added = out[1] as {
+      role: string;
+      providerData?: Record<string, unknown>;
+      content: Array<{ type: string; image?: string }>;
+    };
+    expect(added.role).toBe("user");
+    expect(added.providerData?.[TRANSIENT_SCREENSHOT_MARKER]).toBe(true);
+    expect(added.content.find((c) => c.type === "input_image")?.image).toBe(
+      SHOT,
+    );
+  });
+
+  it("does not mutate the original items", () => {
+    const original = createUserMessage("keep me text-only");
+    const items = [original];
+    appendAmbientScreenshot(items, SHOT);
+    // The original (which the session persists) stays a plain string message.
+    expect((original as { content: unknown }).content).toBe(
+      "keep me text-only",
+    );
   });
 });
 

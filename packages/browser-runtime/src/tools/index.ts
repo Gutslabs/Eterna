@@ -8,13 +8,17 @@ import {
   getEditorValueTool,
   hoverElementByUidTool,
 } from "./element";
+import { extractStructuredDataTool } from "./extract-structured-data";
 import { interventionTools } from "./interventions/index.js";
+import { forgetTool, rememberTool } from "./memory";
 import {
   getPageMetadataTool,
   highlightElementTool,
   highlightTextInlineTool,
   scrollToElementTool,
 } from "./page";
+import { readPageTool } from "./read-page";
+import { readUrlTool } from "./read-url";
 import {
   captureScreenshotTool,
   captureScreenshotWithHighlightTool,
@@ -40,11 +44,12 @@ import {
 } from "./tab";
 import { downloadChatImagesTool, downloadImageTool } from "./tools/downloads";
 import { uploadFileToInputTool } from "./tools/upload-file";
+import { webSearchTool } from "./web";
 import { getYoutubeTranscriptTool } from "./youtube-transcript";
 
 /**
  * All browser tools registered for AI use
- * Total: 35 tools (31 core + 4 intervention tools)
+ * Total: 41 tools (37 core + 4 intervention tools)
  *
  * Disabled tools (per aipex):
  * - duplicate_tab (not in aipex)
@@ -83,12 +88,20 @@ const browserFunctionTools: BrowserFunctionTool[] = [
   uploadFileToInputTool,
   computerTool,
 
-  // Page Content (5 tools)
+  // Page Content & web (9 tools)
   getPageMetadataTool,
   scrollToElementTool,
   highlightElementTool,
   highlightTextInlineTool,
   getYoutubeTranscriptTool,
+  readUrlTool,
+  readPageTool,
+  extractStructuredDataTool,
+  webSearchTool,
+
+  // Memory (2 tools)
+  rememberTool,
+  forgetTool,
 
   // Screenshot (3 tools)
   captureScreenshotTool,
@@ -137,6 +150,12 @@ export function registerDefaultBrowserTools<T extends ToolRegistryLike>(
 }
 
 export {
+  loadMemories,
+  type MemoryEntry,
+  renderMemoriesForPrompt,
+} from "./memory";
+export { captureViewportForAmbient } from "./screenshot";
+export {
   executeScriptInActiveTab,
   executeScriptInTab,
   getActiveTab,
@@ -154,7 +173,6 @@ export {
   type WebSearchResult,
   webFetchTool,
   webResearchTools,
-  webSearchTool,
 } from "./web";
 export {
   fetchYoutubeTranscriptForTab,

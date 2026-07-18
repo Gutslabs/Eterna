@@ -24,7 +24,11 @@ import {
 } from "../../ai-elements/prompt-input";
 import { DEFAULT_MODELS } from "../constants";
 import { useComponentsContext, useConfigContext } from "../context";
-import { ModelPicker } from "./model-picker";
+import {
+  createGptWebModelEntries,
+  normalizeGptWebModelValue,
+} from "./gpt-web-models";
+import { type ModelEntry, ModelPicker } from "./model-picker";
 
 export interface ExtendedInputAreaProps extends InputAreaProps {
   /** Available models for selection (used as fallback if API fetch fails) */
@@ -158,13 +162,11 @@ export function DefaultInputArea({
         value: id,
       }));
   }, []);
-  // Gemini via the local gemini-cli OAuth proxy (OpenAI-compatible).
+  // Gemini via the local CLIProxyAPI Antigravity OAuth proxy (OpenAI-compatible).
   const geminiGatewayEntries = useMemo(
     () => [
-      { name: "Gemini 3.1 Pro", value: "gemini-3.1-pro-preview" },
-      { name: "Gemini 3 Pro", value: "gemini-3-pro-preview" },
-      { name: "Gemini 2.5 Pro", value: "gemini-2.5-pro" },
-      { name: "Gemini 2.5 Flash", value: "gemini-2.5-flash" },
+      { name: "Gemini 3.1 Pro", value: "gemini-3.1-pro-low" },
+      { name: "Gemini 3 Flash", value: "gemini-3-flash" },
     ],
     [],
   );
@@ -178,51 +180,81 @@ export function DefaultInputArea({
     ],
     [],
   );
+  // Claude via the same local CLIProxyAPI proxy (Claude Code OAuth). The real
+  // API path — full tools, streaming and parallel subagents — distinct from the
+  // web-UI-driven `claude-browser` entries below.
+  const claudeGatewayEntries = useMemo(
+    () => [
+      { name: "Claude Opus 4.8", value: "claude-opus-4-8" },
+      { name: "Claude Sonnet 4.6", value: "claude-sonnet-4-6" },
+      { name: "Claude Haiku 4.5", value: "claude-haiku-4-5-20251001" },
+    ],
+    [],
+  );
   // Claude web sub-models routed through the gateway. The value encodes the
   // gateway model switch as "claude-browser::<Model>|<Effort>".
   const claudeSubModelEntries = useMemo(
     () => [
       {
-        name: "Claude Opus 4.8 (High)",
+        name: "Claude Opus 4.8 (web · High)",
         value: "claude-browser::Opus 4.8|High",
       },
       {
-        name: "Claude Opus 4.8 (Max)",
+        name: "Claude Opus 4.8 (web · Max)",
         value: "claude-browser::Opus 4.8|Max",
       },
-      { name: "Claude Sonnet 4.6", value: "claude-browser::Sonnet 4.6" },
-      { name: "Claude Haiku 4.5", value: "claude-browser::Haiku 4.5" },
+      { name: "Claude Sonnet 4.6 (web)", value: "claude-browser::Sonnet 4.6" },
+      { name: "Claude Haiku 4.5 (web)", value: "claude-browser::Haiku 4.5" },
     ],
     [],
   );
-  // gpt-web composer modes routed through the gateway. Mirrors ChatGPT web's
-  // "Intelligence" picker (Instant / Medium / High); the mode rides along as
-  // the "::<Mode>" suffix on the model name, which the local gateway maps onto
-  // the ChatGPT web composer.
-  const gptWebModeEntries = useMemo(
-    () => [
-      { name: "gpt-web (Instant)", value: "catgpt-browser::Instant" },
-      { name: "gpt-web (Medium)", value: "catgpt-browser::Medium" },
-      { name: "gpt-web (High)", value: "catgpt-browser::High" },
-    ],
-    [],
-  );
+  // ChatGPT web now exposes model family and Intelligence as separate menus.
+  // Encode both as "::<Family>|<Intelligence>" for the local gateway, while
+  // the picker groups each family's three Intelligence levels in a submenu.
+  const gptWebModelEntries = useMemo(() => createGptWebModelEntries(), []);
+
+  useEffect(() => {
+    const aiModel = settings.aiModel?.trim();
+    const defaultModel = settings.defaultModel?.trim();
+    const normalizedAiModel = aiModel
+      ? normalizeGptWebModelValue(aiModel)
+      : undefined;
+    const normalizedDefaultModel = defaultModel
+      ? normalizeGptWebModelValue(defaultModel)
+      : undefined;
+    const updates: { aiModel?: string; defaultModel?: string } = {};
+
+    if (normalizedAiModel && normalizedAiModel !== settings.aiModel) {
+      updates.aiModel = normalizedAiModel;
+    }
+    if (
+      normalizedDefaultModel &&
+      normalizedDefaultModel !== settings.defaultModel
+    ) {
+      updates.defaultModel = normalizedDefaultModel;
+    }
+    if (updates.aiModel || updates.defaultModel) {
+      void updateSettings(updates);
+    }
+  }, [settings.aiModel, settings.defaultModel, updateSettings]);
   const chatgptModelEntries = useMemo(
     () => [
       ...subscriptionModelEntries,
       ...gatewayModelEntries,
       ...geminiGatewayEntries,
       ...grokGatewayEntries,
+      ...claudeGatewayEntries,
       ...claudeSubModelEntries,
-      ...gptWebModeEntries,
+      ...gptWebModelEntries,
     ],
     [
       subscriptionModelEntries,
       gatewayModelEntries,
       geminiGatewayEntries,
       grokGatewayEntries,
+      claudeGatewayEntries,
       claudeSubModelEntries,
-      gptWebModeEntries,
+      gptWebModelEntries,
     ],
   );
 
@@ -231,18 +263,22 @@ export function DefaultInputArea({
   // intentionally excluded — they require AIPex-proxy auth we don't have, so
   // showing them would just list models the user can't actually use.
   const providerGroups = useMemo(() => {
-    const groups: Record<
-      ProviderName,
-      Array<{ name: string; value: string }>
-    > = { OpenAI: [], Claude: [], Gemini: [], Grok: [], Other: [] };
+    const groups: Record<ProviderName, ModelEntry[]> = {
+      OpenAI: [],
+      Claude: [],
+      Gemini: [],
+      Grok: [],
+      Other: [],
+    };
     const seen = new Set<string>();
     for (const model of [
       ...subscriptionModelEntries,
       ...gatewayModelEntries,
       ...geminiGatewayEntries,
       ...grokGatewayEntries,
+      ...claudeGatewayEntries,
       ...claudeSubModelEntries,
-      ...gptWebModeEntries,
+      ...gptWebModelEntries,
     ]) {
       if (seen.has(model.value)) continue;
       seen.add(model.value);
@@ -254,8 +290,9 @@ export function DefaultInputArea({
     gatewayModelEntries,
     geminiGatewayEntries,
     grokGatewayEntries,
+    claudeGatewayEntries,
     claudeSubModelEntries,
-    gptWebModeEntries,
+    gptWebModelEntries,
   ]);
 
   // Provider segments for the model picker: one per provider that has models,
@@ -289,7 +326,9 @@ export function DefaultInputArea({
     ];
 
     // If the user's current model is not in any group, prepend it as a custom entry
-    const currentModel = settings.aiModel?.trim();
+    const currentModel = normalizeGptWebModelValue(
+      settings.aiModel?.trim() ?? "",
+    );
     if (currentModel && !combined.some((m) => m.value === currentModel)) {
       return [
         { name: `${currentModel} (Custom)`, value: currentModel },
@@ -302,8 +341,8 @@ export function DefaultInputArea({
 
   const resolvedDefaultModel = useMemo(() => {
     const candidates = [
-      settings.defaultModel?.trim(),
-      settings.aiModel?.trim(),
+      normalizeGptWebModelValue(settings.defaultModel?.trim() ?? ""),
+      normalizeGptWebModelValue(settings.aiModel?.trim() ?? ""),
       effectiveModels[0]?.value,
     ].filter(Boolean) as string[];
 
@@ -394,7 +433,7 @@ export function DefaultInputArea({
       {slots.inputHeader?.()}
       <PromptInput
         onSubmit={handleSubmit}
-        className="mt-0 divide-y-0 rounded-2xl border-[#343434] bg-[#272727] shadow-lg shadow-black/20"
+        className="mt-0 divide-y-0 rounded-2xl border-border bg-card shadow-lg shadow-black/20"
         globalDrop
         multiple
       >

@@ -33,6 +33,20 @@ type Connector = () => ClientPortLike;
 const defaultConnector: Connector = () =>
   chrome.runtime.connect({ name: CHAT_PORT_NAME }) as unknown as ClientPortLike;
 
+const CLIENT_ID_KEY = "eterna-chat-client-id";
+
+function createClientId(): string {
+  try {
+    const existing = globalThis.sessionStorage?.getItem(CLIENT_ID_KEY);
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    globalThis.sessionStorage?.setItem(CLIENT_ID_KEY, id);
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
 /** Pull-based queue bridging port callbacks into an async generator. */
 class AsyncEventQueue<T> {
   private items: T[] = [];
@@ -92,9 +106,14 @@ export class RemoteBrowserAgent {
   >();
   private nextId = 0;
   private lastRunId: string | null = null;
+  private readonly clientId: string;
 
-  constructor(connector: Connector = defaultConnector) {
+  constructor(
+    connector: Connector = defaultConnector,
+    clientId = createClientId(),
+  ) {
     this.connector = connector;
+    this.clientId = clientId;
   }
 
   private newId(prefix: string): string {
@@ -152,7 +171,13 @@ export class RemoteBrowserAgent {
         resolve: resolve as (value: unknown) => void,
         reject,
       });
-      port.postMessage({ type: "rpc", reqId, method, args });
+      port.postMessage({
+        type: "rpc",
+        clientId: this.clientId,
+        reqId,
+        method,
+        args,
+      });
     });
   }
 
@@ -209,6 +234,7 @@ export class RemoteBrowserAgent {
     this.messageListeners.add(listener);
     port.postMessage({
       type: "start_turn",
+      clientId: this.clientId,
       runId,
       text,
       options: {
@@ -243,7 +269,11 @@ export class RemoteBrowserAgent {
           // Generator dropped early (Stop pressed / chat reset) — abort the
           // host-side run too.
           try {
-            agent.ensurePort().postMessage({ type: "interrupt", runId });
+            agent.ensurePort().postMessage({
+              type: "interrupt",
+              clientId: agent.clientId,
+              runId,
+            });
           } catch {
             // Host already gone — nothing to interrupt.
           }
@@ -282,6 +312,7 @@ export class RemoteBrowserAgent {
     try {
       this.ensurePort().postMessage({
         type: "bind_conversation",
+        clientId: this.clientId,
         runId: this.lastRunId,
         conversationId,
       });
@@ -311,7 +342,7 @@ export class RemoteBrowserAgent {
         }
       };
       this.messageListeners.add(onReply);
-      port.postMessage({ type: "attach" });
+      port.postMessage({ type: "attach", clientId: this.clientId });
     });
 
     if (!snapshot) {

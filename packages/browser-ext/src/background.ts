@@ -20,41 +20,25 @@ const SIDE_PANEL_PATH = "src/sidepanel.html";
 // host-page refresh/navigation; the sidebar attaches over a port.
 initBackgroundChatHost();
 
-// Browsers without the Chrome-only chrome.sidePanel API (e.g. Arc, Dia) get
-// the same chat UI in a standalone popup window instead.
-async function openPanelWindow() {
+// Absolute last resort (no chrome.sidePanel AND the in-page overlay can't run —
+// e.g. a restricted chrome:// page): open the chat in a NORMAL browser tab.
+//
+// It deliberately never opens a `type:"popup"` window: macOS draws popup windows
+// with their own rounded border/frame + shadow, and THAT window chrome was the
+// stray "border" around the panel (Echo, which only ever uses the docked native
+// panel, has none). The native side panel and the in-page overlay are both
+// borderless — a plain tab keeps this path borderless too.
+async function openPanelTab() {
   const url = chrome.runtime.getURL(SIDE_PANEL_PATH);
-  const existing = await chrome.tabs.query({ url });
-  const existingWindowId = existing[0]?.windowId;
-  if (existingWindowId !== undefined) {
-    await chrome.windows.update(existingWindowId, { focused: true });
+  const [existing] = await chrome.tabs.query({ url });
+  if (existing?.id !== undefined) {
+    await chrome.tabs.update(existing.id, { active: true });
+    if (existing.windowId !== undefined) {
+      await chrome.windows.update(existing.windowId, { focused: true });
+    }
     return;
   }
-  await chrome.windows.create({ url, type: "popup", width: 460, height: 800 });
-}
-
-// Open AIPex when the extension icon is clicked: native side panel where
-// available, popup-window fallback otherwise.
-async function openAipex(tab?: chrome.tabs.Tab) {
-  if (chrome.sidePanel?.open) {
-    try {
-      if (tab?.id !== undefined) {
-        await chrome.sidePanel.open({ tabId: tab.id });
-      } else {
-        const window = await chrome.windows.getCurrent();
-        if (window.id !== undefined) {
-          await chrome.sidePanel.open({ windowId: window.id });
-        }
-      }
-      return;
-    } catch (error) {
-      console.warn(
-        "[AIPex] sidePanel.open failed, falling back to popup window:",
-        error,
-      );
-    }
-  }
-  await openPanelWindow();
+  await chrome.tabs.create({ url });
 }
 
 // Inject the content script into a tab that doesn't have it yet (e.g. it was
@@ -117,8 +101,37 @@ async function openOrToggleSidebar(tab?: chrome.tabs.Tab) {
     }
   }
 
-  // Restricted page where content scripts can't run — last-resort window.
-  await openAipex(targetTab);
+  // Restricted page where content scripts can't run — open the chat in a
+  // normal tab (borderless), never a popup window.
+  await openPanelTab();
+}
+
+// Open AIPex from a user gesture (toolbar icon, keyboard command). Prefer the
+// browser-native side panel: it docks at the true window edge and spans the
+// full height to the very top of the window — which an in-page overlay, bounded
+// by the web viewport (always below the browser toolbar), cannot reach. Only
+// browsers without chrome.sidePanel (e.g. Arc, Dia) fall back to the in-page
+// docked sidebar.
+async function openSidebar(tab?: chrome.tabs.Tab) {
+  if (chrome.sidePanel?.open) {
+    try {
+      if (tab?.id !== undefined) {
+        await chrome.sidePanel.open({ tabId: tab.id });
+      } else {
+        const window = await chrome.windows.getCurrent();
+        if (window.id !== undefined) {
+          await chrome.sidePanel.open({ windowId: window.id });
+        }
+      }
+      return;
+    } catch (error) {
+      console.warn(
+        "[AIPex] sidePanel.open failed, falling back to in-page sidebar:",
+        error,
+      );
+    }
+  }
+  await openOrToggleSidebar(tab);
 }
 
 // After an install/update, re-inject the content script into already-open tabs
@@ -143,7 +156,49 @@ async function injectIntoOpenTabs() {
   );
 }
 
+// Mirror Maple's working setup: on Chromium the toolbar icon opens the
+// browser-native side panel directly (setPanelBehavior with no browser-action
+// popup), which docks at the true window edge and spans full height to the very
+// top of the window — something an in-page overlay (bounded by the web
+// viewport, always below the browser toolbar) can never do. The onClicked
+// listener then does NOTHING on Chromium; it only drives the in-page overlay on
+// browsers that don't expose chrome.sidePanel.
+const NATIVE_SIDE_PANEL_FLAG = "aipex-native-sidepanel";
+
+async function configureSidePanel() {
+  const sidePanel = chrome.sidePanel;
+  const supported = Boolean(sidePanel?.setPanelBehavior);
+  // Tell the content-script overlay whether a native panel will handle the
+  // sidebar, so it disables itself and never stacks on top of the native panel.
+  try {
+    await chrome.storage.local.set({ [NATIVE_SIDE_PANEL_FLAG]: supported });
+  } catch {
+    /* storage may be unavailable */
+  }
+  if (!sidePanel?.setPanelBehavior) return;
+  try {
+    // No browser-action popup, so the icon click opens the side panel.
+    await chrome.action.setPopup({ popup: "" });
+  } catch (error) {
+    console.warn("[AIPex] setPopup failed:", error);
+  }
+  try {
+    await sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  } catch (error) {
+    console.warn("[AIPex] setPanelBehavior failed:", error);
+  }
+}
+
+void configureSidePanel();
+chrome.runtime.onStartup.addListener(() => {
+  void configureSidePanel();
+});
+
 chrome.action.onClicked.addListener((tab) => {
+  // On Chromium the native side panel is opened by setPanelBehavior above (and
+  // onClicked won't even fire there). This only runs on browsers without
+  // chrome.sidePanel, where the in-page overlay is the sidebar.
+  if (chrome.sidePanel) return;
   openOrToggleSidebar(tab).catch((error) => {
     console.error("[AIPex] Failed to open:", error);
   });
@@ -276,7 +331,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 // Listen for keyboard command to open AIPex
 chrome.commands.onCommand.addListener((command) => {
   if (command === "open-aipex") {
-    openOrToggleSidebar().catch((error) => {
+    openSidebar().catch((error) => {
       console.error("[AIPex] Failed to toggle sidebar:", error);
     });
   }
@@ -284,6 +339,10 @@ chrome.commands.onCommand.addListener((command) => {
 
 // Handle extension installation or update
 chrome.runtime.onInstalled.addListener((details) => {
+  // Re-assert the native side-panel behavior (and the in-page-overlay flag) on
+  // install/update, alongside the top-level + onStartup calls.
+  void configureSidePanel();
+
   // Make the in-page sidebar available in tabs that were already open, so they
   // don't fall back to a popup window on the first click after a reload/update.
   void injectIntoOpenTabs();
@@ -727,33 +786,18 @@ async function downloadChatImagesInBackground(
 // =============================================================================
 // External Message Listener - Website Integration
 // =============================================================================
-// externally_connectable in the manifest is the first gate, but it allows any
-// http://localhost:* origin (for local dev of the integration site), which
-// means any local web server could otherwise drive openWithPrompt /
-// REPLAY_USER_MANUAL. Re-check sender.origin in code against an explicit
-// allowlist so the policy lives next to the privileged actions and is trivial
-// to tighten (e.g. drop localhost for production).
+// Re-check sender.origin in code against the same explicit production
+// allowlist as the manifest so privileged actions have defense in depth.
 const TRUSTED_EXTERNAL_ORIGINS = new Set([
   "https://www.claudechrome.com",
   "https://claudechrome.com",
-  "https://aipex.ing",
 ]);
 
 function isTrustedExternalSender(
   sender: chrome.runtime.MessageSender,
 ): boolean {
   const origin = sender.origin ?? "";
-  if (TRUSTED_EXTERNAL_ORIGINS.has(origin)) return true;
-  // Local dev of the integration site only.
-  try {
-    const { hostname, protocol } = new URL(origin);
-    return (
-      protocol === "http:" &&
-      (hostname === "localhost" || hostname === "127.0.0.1")
-    );
-  } catch {
-    return false;
-  }
+  return TRUSTED_EXTERNAL_ORIGINS.has(origin);
 }
 
 chrome.runtime.onMessageExternal.addListener(

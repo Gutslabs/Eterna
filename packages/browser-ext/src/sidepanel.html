@@ -3,13 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AIPex Side Panel</title>
+    <title>Eterna</title>
     <style>
-      /* Match the sidebar panel background (PANEL_BG in sidebar-overlay.tsx)
-         so opening the panel doesn't flash white while the app loads. */
+      /* Match the system theme before React resolves the stored preference. */
       html,
       body {
-        background: #181817;
+        background: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #181817;
+        }
       }
       /* Opened as a standalone tab (data-standalone set in index.tsx): center
          the chat as a max-width column so it reads like a normal chat page

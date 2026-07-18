@@ -68,6 +68,7 @@ export function BrowserChatInputArea(props: InputAreaProps) {
           withPage = [page, ...(contexts ?? [])];
         }
       }
+
       const enriched = await withYoutubeTranscriptChunk(
         withPage,
         messagesRef.current,

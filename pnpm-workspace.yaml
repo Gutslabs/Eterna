@@ -1,7 +1,12 @@
 packages:
   - packages/*
+  - mcp-bridge
+  - services/*
 allowBuilds:
   '@j178/prek': false
   esbuild: true
   protobufjs: false
   puppeteer: false
+overrides:
+  ip-address: 10.2.0
+  rollup@<2.80.0: ^2.80.0

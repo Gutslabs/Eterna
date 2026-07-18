@@ -28,9 +28,11 @@ import {
   isByokConfigured,
   isCatGptGatewayModel,
   isChatGptModel,
+  isClaudeGatewayModel,
   isGeminiGatewayModel,
   isXaiGatewayModel,
 } from "../../lib/ai-provider";
+import { AutoScreenshotToggle } from "../../lib/auto-screenshot-toggle";
 import { BrowserChatHeader } from "../../lib/browser-chat-header";
 import { BrowserChatInputArea } from "../../lib/browser-chat-input-area";
 import { BrowserContextLoader } from "../../lib/browser-context-loader";
@@ -42,6 +44,8 @@ import { ChatInputToolbar } from "../../lib/chat-input-toolbar";
 import { InputModeProvider } from "../../lib/input-mode-context";
 import { InterventionModeProvider } from "../../lib/intervention-mode-context";
 import { InterventionUI } from "../../lib/intervention-ui";
+import { LocalBackendIndicator } from "../../lib/local-backend-indicator";
+import { probeLocalBackend } from "../../lib/local-backend-status";
 import { ParallelAgentToggle } from "../../lib/parallel-agent-toggle";
 import { PromptLibrary } from "../../lib/prompt-library";
 import { getRemoteBrowserAgent } from "../../lib/remote-agent";
@@ -186,7 +190,8 @@ async function checkAuth(
     isChatGptModel(settings.aiModel) ||
     isCatGptGatewayModel(settings.aiModel) ||
     isGeminiGatewayModel(settings.aiModel) ||
-    isXaiGatewayModel(settings.aiModel)
+    isXaiGatewayModel(settings.aiModel) ||
+    isClaudeGatewayModel(settings.aiModel)
   ) {
     const offline = await offlineBackendGuide(settings.aiModel);
     if (offline) {
@@ -211,16 +216,6 @@ async function checkAuth(
   }
 
   return { needsAuth: true, hasCustomConfig: false };
-}
-
-/** Quick reachability probe for a local backend (any HTTP response = up). */
-async function isBackendReachable(url: string): Promise<boolean> {
-  try {
-    await fetch(url, { signal: AbortSignal.timeout(2500) });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function gatewayOfflineGuide(label: string, container: string): string {
@@ -249,7 +244,7 @@ const GEMINI_OFFLINE_GUIDE = [
   "brew services start cliproxyapi",
   "```",
   "",
-  "Birkaç saniye sonra tekrar dene. İlk kez giriş gerekiyorsa `cliproxyapi -login`.",
+  "Birkaç saniye sonra tekrar dene. İlk kez giriş gerekiyorsa `cliproxyapi -antigravity-login`.",
 ].join("\n");
 
 const GROK_OFFLINE_GUIDE = [
@@ -264,6 +259,18 @@ const GROK_OFFLINE_GUIDE = [
   "Birkaç saniye sonra tekrar dene. İlk kez giriş gerekiyorsa `cliproxyapi -xai-login`.",
 ].join("\n");
 
+const CLAUDE_OFFLINE_GUIDE = [
+  "### ⚠️ Claude proxy kapalı",
+  "",
+  "Claude için **CLIProxyAPI** (`localhost:8317`) çalışmıyor. Terminalde başlat:",
+  "",
+  "```bash",
+  "brew services start cliproxyapi",
+  "```",
+  "",
+  "Birkaç saniye sonra tekrar dene. İlk kez giriş gerekiyorsa `cliproxyapi -claude-login`.",
+].join("\n");
+
 /**
  * If the model needs a local backend (Docker gateway or the Gemini proxy) and
  * it isn't reachable, return a markdown guide to start it; otherwise null.
@@ -271,25 +278,23 @@ const GROK_OFFLINE_GUIDE = [
 async function offlineBackendGuide(
   model: string | undefined,
 ): Promise<string | null> {
+  const reachable = await probeLocalBackend(model);
+  if (reachable) return null;
+
   if (model?.startsWith("catgpt-browser")) {
-    return (await isBackendReachable("http://localhost:8000/healthz"))
-      ? null
-      : gatewayOfflineGuide("gpt-web (ChatGPT)", "catgpt");
+    return gatewayOfflineGuide("gpt-web (ChatGPT)", "catgpt");
   }
   if (model?.startsWith("claude-browser")) {
-    return (await isBackendReachable("http://localhost:8001/healthz"))
-      ? null
-      : gatewayOfflineGuide("claude-web (Claude)", "catgpt-claude");
+    return gatewayOfflineGuide("claude-web (Claude)", "catgpt-claude");
   }
   if (isGeminiGatewayModel(model)) {
-    return (await isBackendReachable("http://localhost:8317/v1/models"))
-      ? null
-      : GEMINI_OFFLINE_GUIDE;
+    return GEMINI_OFFLINE_GUIDE;
   }
   if (isXaiGatewayModel(model)) {
-    return (await isBackendReachable("http://localhost:8317/v1/models"))
-      ? null
-      : GROK_OFFLINE_GUIDE;
+    return GROK_OFFLINE_GUIDE;
+  }
+  if (isClaudeGatewayModel(model)) {
+    return CLAUDE_OFFLINE_GUIDE;
   }
   return null;
 }
@@ -420,7 +425,13 @@ function ChatApp() {
             ),
             messageActions: (props) => <BrowserMessageActions {...props} />,
             inputToolbar: (props) => <ChatInputToolbar {...props} />,
-            composerTools: () => <ParallelAgentToggle />,
+            composerTools: () => (
+              <>
+                <LocalBackendIndicator />
+                <ParallelAgentToggle />
+                <AutoScreenshotToggle />
+              </>
+            ),
             inputHeader: () => <PromptLibrary />,
             promptExtras: () => <BrowserContextLoader />,
             onLogin: login,

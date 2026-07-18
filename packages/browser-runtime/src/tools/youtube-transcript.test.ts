@@ -68,7 +68,7 @@ describe("parseTranscriptXml", () => {
     expect(segments).toEqual([{ start: 3, duration: 0.5, text: "kept" }]);
   });
 
-  it("returns an empty array for empty or unparseable input", () => {
+  it("returns an empty array for empty or unparsable input", () => {
     expect(parseTranscriptXml("")).toEqual([]);
     expect(parseTranscriptXml("<html><body>no captions</body></html>")).toEqual(
       [],

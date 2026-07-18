@@ -12,7 +12,7 @@ import { useTranslation } from "@aipexstudio/aipex-react/i18n/context";
 import { cn } from "@aipexstudio/aipex-react/lib/utils";
 import type { HeaderProps } from "@aipexstudio/aipex-react/types";
 import { conversationStorage } from "@aipexstudio/browser-runtime";
-import { ExternalLinkIcon, PlusIcon, XIcon } from "lucide-react";
+import { ExternalLinkIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   lazy,
   Suspense,
@@ -312,16 +312,15 @@ export function BrowserChatHeader({
         className={cn("flex items-center justify-between px-3 py-2", className)}
         {...props}
       >
-        {/* Left side - New chat */}
+        {/* Left side - New chat: compose icon only, no "+" and no label. */}
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={handleNewChat}
           title={t("common.newChat")}
-          className="gap-1.5 px-2"
+          className="size-8"
         >
-          <PlusIcon className="size-4" />
-          {t("common.newChat")}
+          <SquarePenIcon className="size-4" />
         </Button>
 
         {/* Right side - one overflow menu (history + settings) and close */}

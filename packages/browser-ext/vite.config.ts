@@ -151,6 +151,13 @@ export default defineConfig({
     },
     // Ensure CSS is extracted properly
     cssCodeSplit: false,
+    // Vite's module-preload polyfill breaks @crxjs content scripts on
+    // CSP-strict sites (x.com): it injects <link rel="modulepreload"> whose
+    // URLs resolve against the *page* origin, so the preloads return the SPA's
+    // HTML ("Expected a JavaScript module but got MIME type text/html") and the
+    // dynamic import of the in-page UI (loadUi → ./ui) fails. With it off the
+    // dynamic imports go straight through chrome.runtime.getURL and load fine.
+    modulePreload: false,
   },
   server: {
     port: 5173,

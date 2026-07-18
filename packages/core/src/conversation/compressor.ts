@@ -2,6 +2,21 @@ import type { AgentInputItem } from "@openai/agents";
 import { Agent, run } from "@openai/agents";
 import type { AiSdkModel, CompressionConfig } from "../types.js";
 
+/** Trim a string to `max`, marking the cut. */
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+/**
+ * Keep the head AND tail of a long value, gutting the middle. User messages put
+ * the auto-attached page block first and the user's actual question last, so a
+ * front-only truncation would drop the question — keep both ends.
+ */
+function truncateMiddle(value: string, head: number, tail: number): string {
+  if (value.length <= head + tail + 20) return value;
+  return `${value.slice(0, head)} …[trimmed]… ${value.slice(-tail)}`;
+}
+
 export class ConversationCompressor {
   private config: Required<
     Omit<CompressionConfig, "tokenWatermark" | "protectRecentMessages">
@@ -15,13 +30,19 @@ export class ConversationCompressor {
     this.config = {
       summarizeAfterItems: config.summarizeAfterItems ?? 20,
       keepRecentItems: config.keepRecentItems ?? 10,
-      maxSummaryLength: config.maxSummaryLength ?? 500,
+      maxSummaryLength: config.maxSummaryLength ?? 2000,
       tokenWatermark: config.tokenWatermark,
       protectRecentMessages: config.protectRecentMessages,
     };
     this.agent = new Agent({
       name: "Summarizer",
-      instructions: `You are a conversation summarizer. Create a concise summary capturing key points, decisions, and information shared. Keep the summary under ${this.config.maxSummaryLength} characters.`,
+      instructions: `You compress the earlier part of a browser-agent conversation so it can be dropped from context without losing what matters. Produce a tight briefing that preserves:
+- the user's goal(s) and any explicit preferences or constraints;
+- decisions made and conclusions reached;
+- pages and resources visited — keep their URLs/titles verbatim so they can be reopened, but DROP the raw page/article/screenshot text bodies;
+- what has been done so far and what is still pending (unresolved sub-tasks);
+- the last few tool errors or blockers, stated concretely.
+Write terse notes, not prose; do not address the user. Keep it under ${this.config.maxSummaryLength} characters.`,
       model,
     });
   }
@@ -64,20 +85,62 @@ export class ConversationCompressor {
 
   private async generateSummary(items: AgentInputItem[]): Promise<string> {
     const conversationText = items
-      .filter((item) => item.type === "message")
-      .map((item) => {
-        const role = "role" in item ? item.role : "unknown";
-        const content = this.extractContent(item);
-        return `${role}: ${content}`;
-      })
+      .map((item) => this.renderItemForSummary(item))
+      .filter((line) => line.length > 0)
       .join("\n");
 
     const result = await run(
       this.agent,
-      `Summarize this conversation:\n\n${conversationText}`,
+      `Summarize the conversation so far:\n\n${conversationText}`,
     );
 
     return (result.finalOutput ?? "").trim();
+  }
+
+  /**
+   * Render one history item as a single briefing line. Unlike the old
+   * message-only filter, this keeps the tool trail (which pages were read, what
+   * errored) — the high-signal content for a browsing agent — while trimming the
+   * bulky bodies so the summarizer input stays bounded.
+   */
+  private renderItemForSummary(item: AgentInputItem): string {
+    const type = item.type;
+    if (type === "message" || type === undefined) {
+      const role = "role" in item ? item.role : "unknown";
+      const content = truncateMiddle(this.extractContent(item), 200, 500);
+      return content ? `${role}: ${content}` : "";
+    }
+    if (type === "function_call") {
+      const call = item as { name?: string; arguments?: unknown };
+      const name = call.name ?? "tool";
+      const args =
+        typeof call.arguments === "string"
+          ? call.arguments
+          : JSON.stringify(call.arguments ?? {});
+      return `→ called ${name}(${truncate(args, 200)})`;
+    }
+    if (type === "function_call_result") {
+      const res = item as { name?: string; output?: unknown };
+      const name = res.name ?? "tool";
+      return `← ${name} → ${truncate(this.extractToolResultText(res.output), 400)}`;
+    }
+    return "";
+  }
+
+  /** Best-effort flatten of a tool result's output to text for the summary. */
+  private extractToolResultText(output: unknown): string {
+    if (output == null) return "";
+    if (typeof output === "string") return output;
+    if (typeof output === "object") {
+      const obj = output as Record<string, unknown>;
+      if (typeof obj.text === "string") return obj.text;
+      try {
+        return JSON.stringify(obj);
+      } catch {
+        return String(output);
+      }
+    }
+    return String(output);
   }
 
   private extractContent(item: AgentInputItem): string {
@@ -94,11 +157,13 @@ export class ConversationCompressor {
   }
 
   shouldCompress(itemCount: number, lastPromptTokens?: number): boolean {
-    // If tokenWatermark is set and we have lastPromptTokens, check if it exceeds watermark
-    if (
-      this.config.tokenWatermark !== undefined &&
-      lastPromptTokens !== undefined
-    ) {
+    // Prefer the token watermark when we actually have a usage reading. Some
+    // gateways don't report usage (lastPromptTokens stays 0); treat that as
+    // "unknown" and fall back to item count so a long session still compacts
+    // instead of growing forever.
+    const tokensKnown =
+      typeof lastPromptTokens === "number" && lastPromptTokens > 0;
+    if (this.config.tokenWatermark !== undefined && tokensKnown) {
       return lastPromptTokens > this.config.tokenWatermark;
     }
     // Fallback to item count based compression

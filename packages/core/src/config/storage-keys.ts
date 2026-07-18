@@ -8,6 +8,10 @@ export const STORAGE_KEYS = {
   AUTOMATION_MODE: `${PREFIX}automation_mode`,
   /** User toggle: fan research out to parallel background subagents. */
   PARALLEL_AGENT: `${PREFIX}parallel_agent`,
+  /** User toggle (default ON): auto-attach a viewport screenshot every message. */
+  AUTO_ATTACH_SCREENSHOT: `${PREFIX}auto_attach_screenshot`,
+  /** Long-term user memory: durable facts saved via the remember tool. */
+  MEMORY: `${PREFIX}memory`,
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

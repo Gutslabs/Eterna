@@ -31,15 +31,22 @@ export interface StartTurnOptions {
 export type ChatHostInbound =
   | {
       type: "start_turn";
+      clientId: string;
       runId: string;
       text: string;
       options: StartTurnOptions;
     }
-  | { type: "interrupt"; runId: string }
-  | { type: "attach" }
-  | { type: "bind_conversation"; runId: string; conversationId: string }
+  | { type: "interrupt"; clientId: string; runId: string }
+  | { type: "attach"; clientId: string }
+  | {
+      type: "bind_conversation";
+      clientId: string;
+      runId: string;
+      conversationId: string;
+    }
   | {
       type: "rpc";
+      clientId: string;
       reqId: string;
       method:
         | "rollback_last_assistant_turn"

@@ -26,30 +26,151 @@ import { CURRENT_PAGE_CONTEXT_ID } from "./context-ids";
 const SELECTION_CONTEXT_PREFIX = "aipex-selection";
 const PENDING_SELECTION_KEY = "aipex-pending-selection";
 const PENDING_CONTEXT_KEY = "aipex-pending-context";
-const PAGE_TEXT_LIMIT = 6000;
+// Clean Markdown carries far more signal per char than the old raw-text dump,
+// so a larger budget is still token-reasonable.
+const PAGE_TEXT_LIMIT = 12000;
+
+interface PageMeta {
+  title?: string;
+  site?: string;
+  author?: string;
+  published?: string;
+  description?: string;
+  wordCount?: number;
+  extractor?: string;
+  structured?: Record<string, string>;
+}
+
+interface PageExtraction {
+  text: string;
+  meta?: PageMeta;
+  mode: string;
+  truncated: boolean;
+  /** What the user is currently looking at (viewport region), from the content script. */
+  visible?: { topHeading?: string; scrollPct?: number };
+}
 
 /**
- * Read the active tab's readable text from its live DOM (via the content
- * script) so the AI can actually "see" the page. This matters most for the
- * gateway, which relays to ChatGPT's web UI and can't run our page-reading
- * tools. Reading at call time also keeps it fresh on SPAs like X.
+ * Ask the content script for the active tab's content. It runs Defuddle in the
+ * page (main-content-only Markdown + metadata) and falls back to the readable
+ * innerText on apps/feeds. Reading at call time keeps it fresh on SPAs like X.
+ * This matters most for the gateway, which relays to ChatGPT's web UI and
+ * can't run our page-reading tools.
  */
-export async function getPageText(tabId: number): Promise<string> {
+async function requestPageExtraction(tabId: number): Promise<PageExtraction> {
   try {
     const response = (await chrome.tabs.sendMessage(
       tabId,
       { request: "get-page-text" },
       { frameId: 0 },
-    )) as { text?: string } | undefined;
-    const text = typeof response?.text === "string" ? response.text : "";
-    return text
-      .replace(/[\t ]+/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim()
-      .slice(0, PAGE_TEXT_LIMIT);
+    )) as
+      | {
+          html?: string;
+          readable?: string;
+          url?: string;
+          visible?: { topHeading?: string; scrollPct?: number };
+        }
+      | undefined;
+    // Defuddle runs here (extension context), not in the content script —
+    // content scripts can't load module chunks on CSP-strict sites. Lazy so
+    // the 320KB bundle stays off the eager path.
+    const { extractFromHtml } = await import("./page-extract");
+    const extracted = await extractFromHtml(
+      response?.html ?? "",
+      response?.url ?? "",
+      response?.readable ?? "",
+    );
+    // Only collapse excess blank lines — never spaces/tabs, which carry
+    // Markdown structure (code indentation, nested lists).
+    const body = extracted.text.replace(/\n{3,}/g, "\n\n").trim();
+    const truncated = body.length > PAGE_TEXT_LIMIT;
+    return {
+      text: truncated ? body.slice(0, PAGE_TEXT_LIMIT) : body,
+      meta: extracted.meta,
+      mode: extracted.mode,
+      truncated,
+      visible: response?.visible,
+    };
   } catch {
-    return "";
+    return { text: "", mode: "error", truncated: false };
   }
+}
+
+/** Budgeted readable content of the active tab (used by the welcome card). */
+export async function getPageText(tabId: number): Promise<string> {
+  return (await requestPageExtraction(tabId)).text;
+}
+
+/** Decode the few HTML entities that leak into page titles (e.g. `&amp;`). */
+function decodeTitle(title: string): string {
+  return title
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'");
+}
+
+/** Compose the model-facing page block: a compact meta line + the content. */
+function formatPageValue(url: string, ex: PageExtraction): string {
+  const m = ex.meta ?? {};
+  const sd = m.structured ?? {};
+  // Defuddle often misses author/published/site — backfill from structured data.
+  const author = m.author || sd.author;
+  const published = m.published || sd.published;
+  const site = m.site || sd.site;
+  const metaLine = [
+    site,
+    author ? `by ${author}` : null,
+    published,
+    typeof m.wordCount === "number" ? `~${m.wordCount} words` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  // Authoritative fields Defuddle drops (price/rating/type) — each ≤120 chars.
+  const dataLine =
+    [
+      sd.type ? `type: ${sd.type}` : null,
+      sd.price ? `price: ${sd.price}` : null,
+      sd.rating ? `rating: ${sd.rating}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null;
+  // Skip the meta description when the body already contains it — otherwise a
+  // short page (e.g. a tweet) repeats the same text as title, quote AND body.
+  const description = m.description?.trim();
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+  const bodyHasDescription =
+    description && norm(ex.text).includes(norm(description));
+  // Tell the model how much it's missing so it can decide whether read_page is
+  // worth a round-trip, instead of calling it blindly just to probe the size.
+  const shownWords = ex.text.trim() ? ex.text.trim().split(/\s+/).length : 0;
+  const truncatedNote =
+    typeof m.wordCount === "number" && m.wordCount > shownWords
+      ? `\n…[truncated — showing ~${shownWords} of ~${m.wordCount} words; call read_page for the rest]`
+      : `\n…[truncated — showing ~${shownWords} words; call read_page for the full content]`;
+  // Reconcile the whole-page text with the viewport screenshot: this tells the
+  // model which section the user is actually looking at.
+  const v = ex.visible;
+  const viewingLine = v?.topHeading
+    ? `Currently viewing: ${v.topHeading}${
+        typeof v.scrollPct === "number" ? ` (~${v.scrollPct}% down)` : ""
+      }`
+    : typeof v?.scrollPct === "number" && v.scrollPct > 0
+      ? `Currently viewing: ~${v.scrollPct}% down the page`
+      : null;
+  return [
+    `URL: ${url}`,
+    viewingLine,
+    metaLine || null,
+    dataLine,
+    description && !bodyHasDescription ? `> ${description}` : null,
+    "",
+    ex.text,
+    ex.truncated ? truncatedNote : null,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
 }
 
 /**
@@ -72,7 +193,9 @@ export async function readActivePageContext(): Promise<ContextItem | null> {
       prefetchYoutubeTranscript(tab.id, url);
     }
     const domain = new URL(url).hostname.replace(/^www\./, "");
-    const pageText = tab?.id ? await getPageText(tab.id) : "";
+    const extraction = tab?.id
+      ? await requestPageExtraction(tab.id)
+      : ({ text: "", mode: "error", truncated: false } as PageExtraction);
     const favicon =
       tab?.favIconUrl && /^(https:|data:)/.test(tab.favIconUrl)
         ? tab.favIconUrl
@@ -82,8 +205,8 @@ export async function readActivePageContext(): Promise<ContextItem | null> {
       type: "page",
       // Stays attached across sends; only the user's X removes it.
       persistent: true,
-      label: tab?.title?.trim() || domain,
-      value: pageText ? `URL: ${url}\n\n${pageText}` : url,
+      label: tab?.title?.trim() ? decodeTitle(tab.title.trim()) : domain,
+      value: extraction.text ? formatPageValue(url, extraction) : url,
       metadata: {
         url,
         domain,
@@ -135,8 +258,10 @@ export function BrowserContextLoader() {
   // until they navigate away.
   const userClosedUrlRef = useRef<string | null>(null);
   const prevHasPageRef = useRef(false);
+  const refreshGenerationRef = useRef(0);
 
   const ensurePageContext = useCallback(async (refreshText = false) => {
+    const generation = ++refreshGenerationRef.current;
     try {
       // Empty conversation → the welcome card stands in for the page chip.
       if (!hasConversationRef.current) {
@@ -145,6 +270,12 @@ export function BrowserContextLoader() {
       }
 
       const item = await readActivePageContext();
+      if (
+        generation !== refreshGenerationRef.current ||
+        !hasConversationRef.current
+      ) {
+        return;
+      }
       if (!item) {
         removeContextRef.current(CURRENT_PAGE_CONTEXT_ID);
         lastPageUrlRef.current = null;
@@ -242,6 +373,7 @@ export function BrowserContextLoader() {
       (i) => i.id === CURRENT_PAGE_CONTEXT_ID,
     );
     if (prevHasPageRef.current && !hasPage) {
+      refreshGenerationRef.current += 1;
       userClosedUrlRef.current = lastPageUrlRef.current;
     }
     prevHasPageRef.current = hasPage;

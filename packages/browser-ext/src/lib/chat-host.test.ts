@@ -87,7 +87,13 @@ describe("createChatHost", () => {
     const ui = fakePort();
     host.handlePort(ui.port);
 
-    ui.send({ type: "start_turn", runId: "r1", text: "hi", options: {} });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
     scripted.push({ type: "session_created", sessionId: "s1" });
     scripted.push(delta("Hello"));
     scripted.push(null);
@@ -115,7 +121,13 @@ describe("createChatHost", () => {
     const ui = fakePort();
     host.handlePort(ui.port);
 
-    ui.send({ type: "start_turn", runId: "r1", text: "hi", options: {} });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
     scripted.push(delta("partial"));
     await vi.waitFor(() => {
       expect(ui.sent.some((m) => m.type === "event")).toBe(true);
@@ -140,7 +152,13 @@ describe("createChatHost", () => {
     const first = fakePort();
     host.handlePort(first.port);
 
-    first.send({ type: "start_turn", runId: "r1", text: "hi", options: {} });
+    first.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
     scripted.push(delta("one"));
     await vi.waitFor(() => {
       expect(first.sent.filter((m) => m.type === "event")).toHaveLength(1);
@@ -149,7 +167,7 @@ describe("createChatHost", () => {
 
     const second = fakePort();
     host.handlePort(second.port);
-    second.send({ type: "attach" });
+    second.send({ type: "attach", clientId: "c1" });
 
     const replay = second.sent.find((m) => m.type === "replay");
     expect(replay).toBeDefined();
@@ -174,8 +192,20 @@ describe("createChatHost", () => {
     const ui = fakePort();
     host.handlePort(ui.port);
 
-    ui.send({ type: "start_turn", runId: "r1", text: "hi", options: {} });
-    ui.send({ type: "start_turn", runId: "r2", text: "again", options: {} });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r2",
+      text: "again",
+      options: {},
+    });
 
     const rejection = ui.sent.find((m) => m.type === "start_rejected");
     expect(rejection).toMatchObject({ runId: "r2", reason: "busy" });
@@ -192,13 +222,19 @@ describe("createChatHost", () => {
     const ui = fakePort();
     host.handlePort(ui.port);
 
-    ui.send({ type: "start_turn", runId: "r1", text: "hi", options: {} });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
     scripted.push(delta("partial"));
     await vi.waitFor(() => {
       expect(ui.sent.some((m) => m.type === "event")).toBe(true);
     });
 
-    ui.send({ type: "interrupt", runId: "r1" });
+    ui.send({ type: "interrupt", clientId: "c1", runId: "r1" });
     // An async generator suspended on an await only unwinds once that await
     // settles — mirror the real stream delivering one more chunk.
     scripted.push(delta("post-stop"));
@@ -213,15 +249,129 @@ describe("createChatHost", () => {
     expect(scripted.wasClosed()).toBe(true);
   });
 
+  it("does not start the agent when interrupted during async setup", async () => {
+    const scripted = scriptedAgent();
+    const chat = vi.spyOn(scripted.agent, "chat");
+    let releaseAgent: ((agent: ChatHostAgent) => void) | undefined;
+    const host = createChatHost({
+      createAgent: () =>
+        new Promise<ChatHostAgent>((resolve) => {
+          releaseAgent = resolve;
+        }),
+    });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
+    ui.send({ type: "interrupt", clientId: "c1", runId: "r1" });
+
+    expect(host.getCurrentRun()).toMatchObject({
+      done: true,
+      interrupted: true,
+    });
+    releaseAgent?.(scripted.agent);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a run to a different sidebar client", async () => {
+    const scripted = scriptedAgent();
+    const host = createChatHost({ createAgent: async () => scripted.agent });
+    const owner = fakePort();
+    const other = fakePort();
+    host.handlePort(owner.port);
+    host.handlePort(other.port);
+
+    owner.send({
+      type: "start_turn",
+      clientId: "owner",
+      runId: "r1",
+      text: "private prompt",
+      options: {},
+    });
+    other.send({ type: "attach", clientId: "other" });
+
+    expect(other.sent).toContainEqual({ type: "no_active_run" });
+    scripted.push(delta("private response"));
+    await vi.waitFor(() => {
+      expect(owner.sent.some((message) => message.type === "event")).toBe(true);
+    });
+    expect(other.sent.some((message) => message.type === "event")).toBe(false);
+
+    scripted.push(null);
+    await vi.waitFor(() => {
+      expect(host.getCurrentRun()?.done).toBe(true);
+    });
+  });
+
+  it("does not let another sidebar reset the active gateway thread", async () => {
+    const scripted = scriptedAgent();
+    const freshGatewayThread = vi.fn();
+    const host = createChatHost({
+      createAgent: async () => scripted.agent,
+      freshGatewayThread,
+    });
+    const owner = fakePort();
+    const other = fakePort();
+    host.handlePort(owner.port);
+    host.handlePort(other.port);
+
+    owner.send({
+      type: "start_turn",
+      clientId: "owner",
+      runId: "r1",
+      text: "private prompt",
+      options: {},
+    });
+    other.send({
+      type: "rpc",
+      clientId: "other",
+      reqId: "rpc1",
+      method: "fresh_gateway_thread",
+      args: { model: "catgpt-browser" },
+    });
+
+    await vi.waitFor(() => {
+      expect(other.sent).toContainEqual(
+        expect.objectContaining({
+          type: "rpc_result",
+          reqId: "rpc1",
+          ok: false,
+        }),
+      );
+    });
+    expect(freshGatewayThread).not.toHaveBeenCalled();
+
+    scripted.push(null);
+    await vi.waitFor(() => {
+      expect(host.getCurrentRun()?.done).toBe(true);
+    });
+  });
+
   it("binds a conversation id and exposes it on the snapshot", async () => {
     const scripted = scriptedAgent();
     const host = createChatHost({ createAgent: async () => scripted.agent });
     const ui = fakePort();
     host.handlePort(ui.port);
 
-    ui.send({ type: "start_turn", runId: "r1", text: "hi", options: {} });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
     ui.send({
       type: "bind_conversation",
+      clientId: "c1",
       runId: "r1",
       conversationId: "conv_42",
     });
@@ -230,6 +380,7 @@ describe("createChatHost", () => {
     // Mismatched runId is ignored.
     ui.send({
       type: "bind_conversation",
+      clientId: "c1",
       runId: "other",
       conversationId: "conv_43",
     });
@@ -247,7 +398,13 @@ describe("createChatHost", () => {
     const ui = fakePort();
     host.handlePort(ui.port);
 
-    ui.send({ type: "start_turn", runId: "r1", text: "hi", options: {} });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
     scripted.push({
       type: "error",
       error: new Error("model exploded"),
@@ -282,18 +439,21 @@ describe("createChatHost", () => {
 
     ui.send({
       type: "rpc",
+      clientId: "c1",
       reqId: "q1",
       method: "rollback_last_assistant_turn",
       args: { sessionId: "s9" },
     });
     ui.send({
       type: "rpc",
+      clientId: "c1",
       reqId: "q2",
       method: "delete_session",
       args: { sessionId: "s9" },
     });
     ui.send({
       type: "rpc",
+      clientId: "c1",
       reqId: "q3",
       method: "fresh_gateway_thread",
       args: { model: "gemini-3.1-pro-preview" },

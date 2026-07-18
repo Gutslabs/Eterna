@@ -1,4 +1,5 @@
 import type { AgentInputItem } from "@openai/agents";
+import { run } from "@openai/agents";
 import type { AiSdkModel } from "@openai/agents-extensions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationCompressor } from "./compressor.js";
@@ -85,6 +86,48 @@ describe("ConversationCompressor", () => {
       const result = await compressor.compressItems(items);
 
       expect(result.compressedItems.length).toBe(10);
+    });
+  });
+
+  describe("summary input preserves the tool trail", () => {
+    it("keeps tool calls, results and visited URLs while trimming bulky bodies", async () => {
+      const c = new ConversationCompressor(mockModel, {
+        summarizeAfterItems: 2,
+        protectRecentMessages: 1,
+      });
+      const longPage = `[page: Example] ${"x".repeat(5000)} What is the price?`;
+      const items: AgentInputItem[] = [
+        createUserMessage(longPage),
+        createAssistantMessage("Let me check."),
+        {
+          type: "function_call",
+          callId: "c1",
+          name: "read_url",
+          arguments: JSON.stringify({ url: "https://example.com/article" }),
+        } as AgentInputItem,
+        {
+          type: "function_call_result",
+          callId: "c1",
+          name: "read_url",
+          output: "URL: https://example.com/article\nTitle ...",
+        } as AgentInputItem,
+        createUserMessage("thanks"),
+        createAssistantMessage("done"),
+      ];
+
+      await c.compressItems(items);
+
+      expect(run).toHaveBeenCalled();
+      const summarizerInput = vi.mocked(run).mock.calls.at(-1)?.[1] as string;
+      // Tool name and the visited URL survive into the summarizer input — the
+      // old message-only filter discarded both.
+      expect(summarizerInput).toContain("read_url");
+      expect(summarizerInput).toContain("https://example.com/article");
+      // The user's trailing question survives even though the page block is huge.
+      expect(summarizerInput).toContain("What is the price?");
+      // The bulky page body is gutted, not sent whole.
+      expect(summarizerInput).toContain("[trimmed]");
+      expect(summarizerInput).not.toContain("x".repeat(1000));
     });
   });
 

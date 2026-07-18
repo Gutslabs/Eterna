@@ -22,6 +22,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
 
@@ -98,6 +102,16 @@ function ProviderIcon({
 export interface ModelEntry {
   name: string;
   value: string;
+  /** Supporting copy such as availability or retirement status. */
+  description?: string;
+  /** Put related leaf models behind one compact submenu. */
+  group?: string;
+  /** Supporting copy shown under the grouped model family. */
+  groupDescription?: string;
+  /** Short label shown inside the group submenu. */
+  optionName?: string;
+  /** Supporting copy shown under an option in the group submenu. */
+  optionDescription?: string;
 }
 
 export interface ModelTab {
@@ -117,6 +131,44 @@ interface ModelPickerProps {
 // Roughly five default DropdownMenuItem rows (~32px each) before the list
 // scrolls — enough to keep the panel short while hinting at more below.
 const LIST_MAX_HEIGHT = 168;
+
+type PickerItem =
+  | { type: "model"; model: ModelEntry }
+  | {
+      type: "group";
+      label: string;
+      description?: string;
+      models: ModelEntry[];
+    };
+
+function groupPickerItems(models: ModelEntry[]): PickerItem[] {
+  const items: PickerItem[] = [];
+  const groups = new Map<string, Extract<PickerItem, { type: "group" }>>();
+
+  for (const model of models) {
+    if (!model.group) {
+      items.push({ type: "model", model });
+      continue;
+    }
+
+    const existing = groups.get(model.group);
+    if (existing) {
+      existing.models.push(model);
+      continue;
+    }
+
+    const group: Extract<PickerItem, { type: "group" }> = {
+      type: "group",
+      label: model.group,
+      description: model.groupDescription,
+      models: [model],
+    };
+    groups.set(model.group, group);
+    items.push(group);
+  }
+
+  return items;
+}
 
 export function ModelPicker({
   value,
@@ -150,11 +202,16 @@ export function ModelPicker({
   }, [tabs, value]);
 
   const activeTab = tabs.find((tab) => tab.key === activeKey) ?? tabs[0];
+  const pickerItems = useMemo(
+    () => groupPickerItems(activeTab?.models ?? []),
+    [activeTab],
+  );
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         disabled={disabled || loading}
+        aria-label={`Model: ${currentLabel}`}
         className={cn(
           "flex w-fit cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 py-1 font-medium text-muted-foreground text-sm outline-hidden transition-colors",
           "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
@@ -204,18 +261,76 @@ export function ModelPicker({
         )}
 
         <div className="overflow-y-auto" style={{ maxHeight: LIST_MAX_HEIGHT }}>
-          {activeTab?.models.map((model) => (
-            <DropdownMenuItem
-              key={model.value}
-              onSelect={() => onChange(model.value)}
-              className="justify-between gap-2"
-            >
-              <span className="truncate">{model.name}</span>
-              {model.value === value && (
-                <CheckIcon className="size-4 shrink-0 opacity-80" />
-              )}
-            </DropdownMenuItem>
-          ))}
+          {pickerItems.map((item) => {
+            if (item.type === "model") {
+              const { model } = item;
+              return (
+                <DropdownMenuItem
+                  key={model.value}
+                  onSelect={() => onChange(model.value)}
+                  className="justify-between gap-2"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate">{model.name}</span>
+                    {model.description && (
+                      <span className="block truncate text-muted-foreground text-xs">
+                        {model.description}
+                      </span>
+                    )}
+                  </span>
+                  {model.value === value && (
+                    <CheckIcon className="size-4 shrink-0 opacity-80" />
+                  )}
+                </DropdownMenuItem>
+              );
+            }
+
+            const groupSelected = item.models.some(
+              (model) => model.value === value,
+            );
+            return (
+              <DropdownMenuSub key={item.label}>
+                <DropdownMenuSubTrigger className="gap-2 py-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{item.label}</span>
+                    {item.description && (
+                      <span className="block truncate text-muted-foreground text-xs font-normal">
+                        {item.description}
+                      </span>
+                    )}
+                  </span>
+                  {groupSelected && (
+                    <CheckIcon className="size-4 shrink-0 opacity-80" />
+                  )}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent className="min-w-[170px]">
+                    {item.models.map((model) => (
+                      <DropdownMenuItem
+                        key={model.value}
+                        onSelect={() => onChange(model.value)}
+                        className="justify-between gap-2"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate">
+                            {model.optionName ?? model.name}
+                          </span>
+                          {model.optionDescription && (
+                            <span className="block truncate text-muted-foreground text-xs">
+                              {model.optionDescription}
+                            </span>
+                          )}
+                        </span>
+                        {model.value === value && (
+                          <CheckIcon className="size-4 shrink-0 opacity-80" />
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
+            );
+          })}
           {!activeTab?.models.length && (
             <div className="px-2 py-1.5 text-muted-foreground text-sm">
               No models

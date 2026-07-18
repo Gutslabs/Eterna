@@ -57,8 +57,8 @@ export function ParallelAgentToggle() {
       aria-pressed={active}
       title={
         active
-          ? "Parallel agent açık — araştırma parallel arka plan agent'larına dağıtılır"
-          : "Parallel agent kapalı — tek model yanıtlar"
+          ? "Parallel research is on — supported tasks may use background agents"
+          : "Parallel research is off — one model handles the task"
       }
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors",
@@ -68,7 +68,7 @@ export function ParallelAgentToggle() {
       )}
     >
       <ParallelIcon />
-      Parallel agent
+      Parallel
     </button>
   );
 }

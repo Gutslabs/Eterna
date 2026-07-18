@@ -50,14 +50,9 @@
     }
   ],
   "externally_connectable": {
-    "matches": [
-      "https://www.claudechrome.com/*",
-      "https://claudechrome.com/*",
-      "https://aipex.ing/*",
-      "http://localhost:*/*"
-    ]
+    "matches": ["https://www.claudechrome.com/*", "https://claudechrome.com/*"]
   },
-  "host_permissions": ["https://*/*", "http://*/*", "<all_urls>"],
+  "host_permissions": ["<all_urls>"],
   "commands": {
     "open-aipex": {
       "suggested_key": {
@@ -73,7 +68,6 @@
     "tabGroups",
     "activeTab",
     "bookmarks",
-    "browsingData",
     "history",
     "scripting",
     "commands",
@@ -81,7 +75,6 @@
     "contextMenus",
     "sessions",
     "sidePanel",
-    "management",
     "downloads",
     "debugger",
     "cookies",

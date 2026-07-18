@@ -24,21 +24,55 @@ const MAX_WIDTH = 760;
 const SIDEPANEL_PATH = "src/sidepanel.html";
 const WIDTH_KEY = "aipex-sidebar-width";
 const PANEL_BG = "#181817";
+// Set by the background SW: true when the browser provides a native side panel
+// (chrome.sidePanel). On those browsers the native panel is the sidebar, so this
+// in-page overlay disables itself and never stacks on top of it. Only browsers
+// without chrome.sidePanel (e.g. Arc) use this overlay.
+const NATIVE_SIDE_PANEL_FLAG = "aipex-native-sidepanel";
 
 const clampWidth = (value: number) =>
   Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, value));
+
+interface RootStyleSnapshot {
+  marginRight: string;
+  marginRightPriority: string;
+  overflowX: string;
+  overflowXPriority: string;
+  transition: string;
+  transitionPriority: string;
+}
 
 export function SidebarApp() {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [resizing, setResizing] = useState(false);
+  // null = not yet known. The overlay only renders/restores once we know the
+  // browser has NO native side panel (false); where one exists it handles the
+  // sidebar and this overlay stays disabled.
+  const [nativeSidePanel, setNativeSidePanel] = useState<boolean | null>(null);
   // Whether the next visual change should animate. Restoring a persisted-open
   // panel after a navigation should appear instantly; user actions slide.
   const animateRef = useRef(true);
   const iframeUrl = useRef(chrome.runtime.getURL(SIDEPANEL_PATH));
   const widthRef = useRef(width);
+  const rootStyleSnapshotRef = useRef<RootStyleSnapshot | null>(null);
   widthRef.current = width;
+
+  const restoreRootStyles = useCallback(() => {
+    const snapshot = rootStyleSnapshotRef.current;
+    if (!snapshot) return;
+    const style = document.documentElement.style;
+    for (const [property, value, priority] of [
+      ["margin-right", snapshot.marginRight, snapshot.marginRightPriority],
+      ["overflow-x", snapshot.overflowX, snapshot.overflowXPriority],
+      ["transition", snapshot.transition, snapshot.transitionPriority],
+    ] as const) {
+      if (value) style.setProperty(property, value, priority);
+      else style.removeProperty(property);
+    }
+    rootStyleSnapshotRef.current = null;
+  }, []);
 
   const persist = useCallback((value: boolean) => {
     // Per-tab (sessionStorage), so opening here never opens another tab.
@@ -73,12 +107,53 @@ export function SidebarApp() {
   // Restore on mount. Open state is per-tab (sessionStorage) so it survives a
   // same-tab navigation without fanning out to other tabs; width is a shared,
   // cross-tab preference. Restored state appears instantly (no slide).
+  // Learn whether a native side panel exists (flag written by the background
+  // SW). If one does, this overlay disables itself; the flag can flip after
+  // mount, so also watch for changes.
   useEffect(() => {
+    let cancelled = false;
+    chrome.storage.local.get(NATIVE_SIDE_PANEL_FLAG).then((result) => {
+      if (!cancelled) {
+        setNativeSidePanel(Boolean(result[NATIVE_SIDE_PANEL_FLAG]));
+      }
+    });
+    const onChange = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      area: string,
+    ) => {
+      if (area === "local" && changes[NATIVE_SIDE_PANEL_FLAG]) {
+        setNativeSidePanel(Boolean(changes[NATIVE_SIDE_PANEL_FLAG].newValue));
+      }
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => {
+      cancelled = true;
+      chrome.storage.onChanged.removeListener(onChange);
+    };
+  }, []);
+
+  // Restore the persisted open state — but only on browsers where this overlay
+  // is the sidebar (no native panel). On native-panel browsers it stays closed.
+  useEffect(() => {
+    if (nativeSidePanel !== false) return;
     if (readSidebarOpen()) {
       animateRef.current = false;
       setMounted(true);
       setOpen(true);
     }
+  }, [nativeSidePanel]);
+
+  useEffect(() => {
+    if (nativeSidePanel === false || !mounted) return;
+    restoreRootStyles();
+    setOpen(false);
+    setMounted(false);
+    persist(false);
+  }, [mounted, nativeSidePanel, persist, restoreRootStyles]);
+
+  useEffect(() => () => restoreRootStyles(), [restoreRootStyles]);
+
+  useEffect(() => {
     let cancelled = false;
     chrome.storage.local.get(WIDTH_KEY).then((result) => {
       if (cancelled) return;
@@ -210,10 +285,22 @@ export function SidebarApp() {
   useEffect(() => {
     if (!mounted) return;
     const root = document.documentElement;
+    if (!rootStyleSnapshotRef.current) {
+      rootStyleSnapshotRef.current = {
+        marginRight: root.style.getPropertyValue("margin-right"),
+        marginRightPriority: root.style.getPropertyPriority("margin-right"),
+        overflowX: root.style.getPropertyValue("overflow-x"),
+        overflowXPriority: root.style.getPropertyPriority("overflow-x"),
+        transition: root.style.getPropertyValue("transition"),
+        transitionPriority: root.style.getPropertyPriority("transition"),
+      };
+    }
     const animate = animateRef.current && !resizing;
-    root.style.transition = animate
-      ? "margin-right 220ms cubic-bezier(0.22, 1, 0.36, 1)"
-      : "none";
+    root.style.setProperty(
+      "transition",
+      animate ? "margin-right 220ms cubic-bezier(0.22, 1, 0.36, 1)" : "none",
+      "important",
+    );
 
     if (open) {
       root.style.setProperty("margin-right", `${width}px`, "important");
@@ -225,15 +312,16 @@ export function SidebarApp() {
     const timer = setTimeout(
       () => {
         // Fully restore the page's own styles once the panel has slid away.
-        root.style.removeProperty("margin-right");
-        root.style.removeProperty("overflow-x");
-        root.style.transition = "";
+        restoreRootStyles();
       },
       animate ? 240 : 0,
     );
     return () => clearTimeout(timer);
-  }, [open, mounted, width, resizing]);
+  }, [open, mounted, width, resizing, restoreRootStyles]);
 
+  // A native side panel (or not-yet-known support) means this overlay must not
+  // render — the native panel is the sidebar there.
+  if (nativeSidePanel !== false) return null;
   if (!mounted) return null;
 
   return (

@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap");
-
 @import "tailwindcss";
 @import "tw-animate-css";
 /* Streamdown's fade/blur keyframes for streamed markdown */
@@ -33,6 +31,7 @@
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.55 0.14 152);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -70,6 +69,7 @@
   --accent-foreground: #ebebeb;
   --destructive: oklch(0.55 0.18 25);
   --destructive-foreground: #ebebeb;
+  --success: oklch(0.7 0.14 152);
   --border: #373737;
   --input: #303030;
   --ring: #545454;
@@ -89,7 +89,9 @@
 }
 
 @theme inline {
-  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -106,6 +108,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

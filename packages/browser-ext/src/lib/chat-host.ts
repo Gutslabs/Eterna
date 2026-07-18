@@ -37,6 +37,12 @@ export interface ChatHostAgent {
 
 export interface ChatHostDeps {
   createAgent(): Promise<ChatHostAgent>;
+  /**
+   * Capture the user's current viewport as a data URL (or null when disabled or
+   * not possible). Injected so this chrome-free host stays testable; powers the
+   * "auto-attach a screenshot to every message" feature.
+   */
+  captureViewport?(): Promise<string | null>;
   freshGatewayThread?(model: string | undefined): void;
   /** Toggled when a run starts/finishes — drives the SW keepalive. */
   onActiveChange?(active: boolean): void;
@@ -47,6 +53,7 @@ export interface ChatHostDeps {
 }
 
 interface RunState {
+  clientId: string;
   runId: string;
   userText: string;
   conversationId: string | null;
@@ -78,9 +85,11 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
   let currentRun: RunState | null = null;
   let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
   const ports = new Set<ChatPortLike>();
+  const portClients = new Map<ChatPortLike, string>();
 
-  const broadcast = (message: ChatHostOutbound): void => {
+  const broadcast = (run: RunState, message: ChatHostOutbound): void => {
     for (const port of ports) {
+      if (portClients.get(port) !== run.clientId) continue;
       try {
         port.postMessage(message);
       } catch {
@@ -114,9 +123,11 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
   const finishRun = (run: RunState): void => {
     if (run.done) return;
     run.done = true;
-    run.completedDetached = ports.size === 0;
+    run.completedDetached = !Array.from(portClients.values()).includes(
+      run.clientId,
+    );
     run.generator = null;
-    broadcast({
+    broadcast(run, {
       type: "turn_done",
       runId: run.runId,
       interrupted: run.interrupted,
@@ -133,13 +144,23 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
   const pumpRun = async (run: RunState): Promise<void> => {
     try {
       const agent = await deps.createAgent();
+      if (run.done || run.interrupted || currentRun !== run) return;
+      // Auto-attach a fresh viewport screenshot to this turn (when enabled), so
+      // the model always sees what's on the user's screen right now. Best-effort:
+      // any failure just sends the turn without an ambient image.
+      const ambientImage = deps.captureViewport
+        ? await deps.captureViewport().catch(() => null)
+        : null;
+      if (run.done || run.interrupted || currentRun !== run) return;
       const generator = agent.chat(run.userText, {
         sessionId: run.sessionId ?? undefined,
         contexts: run.pendingOptions?.contexts as ChatOptions["contexts"],
         images: run.pendingOptions?.images as ChatOptions["images"],
+        ambientImage: ambientImage ?? undefined,
       });
       run.generator = generator;
       for await (const event of generator) {
+        if (run.done || run.interrupted || currentRun !== run) break;
         if (
           event.type === "session_created" ||
           event.type === "session_resumed"
@@ -148,16 +169,17 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
         }
         const wire = serializeAgentEvent(event);
         bufferEvent(run, wire);
-        broadcast({ type: "event", runId: run.runId, event: wire });
+        broadcast(run, { type: "event", runId: run.runId, event: wire });
       }
     } catch (error) {
+      if (run.done || run.interrupted || currentRun !== run) return;
       run.error = error instanceof Error ? error.message : String(error);
       const wire = serializeAgentEvent({
         type: "error",
         error: error instanceof Error ? error : new Error(String(error)),
       } as AgentEvent);
       bufferEvent(run, wire);
-      broadcast({ type: "event", runId: run.runId, event: wire });
+      broadcast(run, { type: "event", runId: run.runId, event: wire });
     } finally {
       finishRun(run);
     }
@@ -200,6 +222,18 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
           return;
         }
         case "fresh_gateway_thread": {
+          if (
+            currentRun &&
+            !currentRun.done &&
+            currentRun.clientId !== message.clientId
+          ) {
+            reply(
+              false,
+              undefined,
+              "Another Eterna window is already running.",
+            );
+            return;
+          }
           deps.freshGatewayThread?.(
             typeof message.args.model === "string"
               ? message.args.model
@@ -224,6 +258,9 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
     port: ChatPortLike,
     message: ChatHostInbound,
   ): void => {
+    if ("clientId" in message) {
+      portClients.set(port, message.clientId);
+    }
     switch (message.type) {
       case "start_turn": {
         if (currentRun && !currentRun.done) {
@@ -239,6 +276,7 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
           cleanupTimer = null;
         }
         const run: RunState = {
+          clientId: message.clientId,
           runId: message.runId,
           userText: message.text,
           conversationId: null,
@@ -263,7 +301,12 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
 
       case "interrupt": {
         const run = currentRun;
-        if (run && run.runId === message.runId && !run.done) {
+        if (
+          run &&
+          run.clientId === message.clientId &&
+          run.runId === message.runId &&
+          !run.done
+        ) {
           run.interrupted = true;
           const generator = run.generator;
           if (generator && typeof generator.return === "function") {
@@ -278,7 +321,7 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       }
 
       case "attach": {
-        if (currentRun) {
+        if (currentRun?.clientId === message.clientId) {
           port.postMessage({ type: "replay", run: snapshot(currentRun) });
         } else {
           port.postMessage({ type: "no_active_run" });
@@ -287,7 +330,11 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       }
 
       case "bind_conversation": {
-        if (currentRun && currentRun.runId === message.runId) {
+        if (
+          currentRun &&
+          currentRun.clientId === message.clientId &&
+          currentRun.runId === message.runId
+        ) {
           currentRun.conversationId = message.conversationId;
         }
         return;
@@ -306,6 +353,7 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       port.onMessage.addListener((message) => handleMessage(port, message));
       port.onDisconnect.addListener(() => {
         ports.delete(port);
+        portClients.delete(port);
       });
     },
     getCurrentRun(): RunSnapshot | null {

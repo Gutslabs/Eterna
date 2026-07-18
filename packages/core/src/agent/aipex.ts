@@ -28,7 +28,11 @@ import type {
 } from "../types.js";
 import { AgentError, ErrorCode } from "../utils/errors.js";
 import { safeJsonParse } from "../utils/json.js";
-import { shapeScreenshotItems } from "../utils/screenshot-shaping.js";
+import {
+  appendAmbientScreenshot,
+  shapeScreenshotItems,
+} from "../utils/screenshot-shaping.js";
+import { clearStaleReadResults } from "../utils/tool-result-clearing.js";
 
 /**
  * Gemini 3.x via OpenAI-compatible gateways occasionally leaks its internal
@@ -39,6 +43,21 @@ import { shapeScreenshotItems } from "../utils/screenshot-shaping.js";
 const LEAKED_THOUGHT_MARKER = /^[㐀-鿿]\d{1,3}>thought\r?\n/;
 /** Buffered-text length at which the marker check is decidable without a newline. */
 const LEAKED_THOUGHT_DECIDE_AT = 16;
+
+/** Consecutive tool failures after which the failure-guard nudge is injected. */
+const FAILURE_NUDGE_THRESHOLD = 3;
+/**
+ * Transient instruction appended to the model input (never persisted) once
+ * tool calls have failed FAILURE_NUDGE_THRESHOLD times in a row, to stop the
+ * agent from burning turns on a stuck action. Same role/shape as the summary
+ * item the conversation manager injects, so the gateways accept it mid-thread.
+ */
+const FAILURE_GUARD_ITEM = {
+  type: "message",
+  role: "system",
+  content:
+    "Several tool calls have just failed in a row. Stop calling tools now — tell the user briefly what is blocking you and what they could try next, answering in their language.",
+} as AgentInputItem;
 
 export class AIPex {
   private agent: OpenAIAgent;
@@ -105,6 +124,8 @@ export class AIPex {
           summarizeAfterItems: options.compression.summarizeAfterItems,
           keepRecentItems: options.compression.keepRecentItems,
           maxSummaryLength: options.compression.maxSummaryLength,
+          tokenWatermark: options.compression.tokenWatermark,
+          protectRecentMessages: options.compression.protectRecentMessages,
         })
       : undefined;
 
@@ -129,6 +150,7 @@ export class AIPex {
   private async *runExecution(
     input: string | AgentInputItem[],
     session: Session | null,
+    ambientImage?: string,
   ): AsyncGenerator<AgentEvent> {
     const startTime = Date.now();
     const metrics = this.initMetrics(startTime, session);
@@ -169,18 +191,37 @@ export class AIPex {
       }
     };
 
+    // Circuit breaker: count tool failures with no success in between. Once it
+    // crosses the threshold, callModelInputFilter injects FAILURE_GUARD_ITEM so
+    // the model stops retrying a stuck action and explains the blocker instead.
+    // A later success resets it; maxTurns stays as the hard backstop.
+    let consecutiveToolFailures = 0;
+
     try {
       const result = await run(this.agent, input, {
         maxTurns: this.maxTurns,
         session: runSession,
         stream: true,
-        // Shape screenshot tool results before every model call:
-        // strip base64 imageData from tool results and inject a transient
-        // user image message so the model can consume images via the vision path.
-        callModelInputFilter: async ({ modelData }) => ({
-          input: shapeScreenshotItems(modelData.input),
-          instructions: modelData.instructions,
-        }),
+        // Before every model call: (1) shape screenshot tool results — strip
+        // base64 imageData and inject it as a transient user image message;
+        // (2) stub out old re-fetchable read bodies to cap context growth;
+        // (3) append the user's current viewport screenshot (if auto-attach is
+        // on) so the model always sees what's on screen; and (4) inject the
+        // failure-guard nudge after repeated tool failures. All transient —
+        // they affect only the model input, never the persisted session.
+        callModelInputFilter: async ({ modelData }) => {
+          const shaped = appendAmbientScreenshot(
+            clearStaleReadResults(shapeScreenshotItems(modelData.input)),
+            ambientImage,
+          );
+          return {
+            input:
+              consecutiveToolFailures >= FAILURE_NUDGE_THRESHOLD
+                ? [...shaped, FAILURE_GUARD_ITEM]
+                : shaped,
+            instructions: modelData.instructions,
+          };
+        },
       });
 
       let streamedOutput = "";
@@ -374,6 +415,11 @@ export class AIPex {
 
           const toolEvent = this.transformToolEvent(streamEvent);
           if (toolEvent) {
+            if (toolEvent.type === "tool_call_error") {
+              consecutiveToolFailures++;
+            } else if (toolEvent.type === "tool_call_complete") {
+              consecutiveToolFailures = 0;
+            }
             await this.emitToolEventHooks({ event: toolEvent });
             yield toolEvent;
           }
@@ -550,7 +596,7 @@ export class AIPex {
         itemCount: session.getItemCount(),
       };
 
-      yield* this.runExecution(finalInput, session);
+      yield* this.runExecution(finalInput, session, chatOptions?.ambientImage);
       return;
     }
 
@@ -562,7 +608,7 @@ export class AIPex {
       yield { type: "session_created", sessionId: session.id };
     }
 
-    yield* this.runExecution(finalInput, session);
+    yield* this.runExecution(finalInput, session, chatOptions?.ambientImage);
   }
 
   /**

@@ -189,7 +189,6 @@ function ScanStatusLine({
           {(scanMs / 1000).toFixed(1)}s
         </span>
       )}
-      <span className="h-px flex-1 bg-border/60" />
       <style>{`@keyframes aipex-rail-pulse {
         0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--foreground) 30%, transparent); }
         70% { box-shadow: 0 0 0 6px transparent; }

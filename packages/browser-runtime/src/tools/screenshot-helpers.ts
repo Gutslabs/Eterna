@@ -11,45 +11,100 @@
 /** Maximum padding in pixels */
 export const MAX_PADDING = 200;
 
-// ===================== Image utilities =====================
+// ===================== Image utilities (service-worker safe) =====================
+//
+// The agent — and therefore these tools — runs in the background service worker,
+// which has NO DOM: `Image`, `document` and HTMLCanvasElement are undefined.
+// Using `new Image()` here threw "ReferenceError: Image is not defined" and broke
+// every screenshot tool. `createImageBitmap` + `OffscreenCanvas` are the
+// worker-safe equivalents.
 
-/**
- * Crop image to a specific region using canvas.
- */
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  return await (await fetch(dataUrl)).blob();
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  return `data:${blob.type || "image/png"};base64,${arrayBufferToBase64(buffer)}`;
+}
+
+/** Decode a data-URL image and return its pixel dimensions. */
+export async function getImageSize(
+  dataUrl: string,
+): Promise<{ width: number; height: number }> {
+  const bitmap = await createImageBitmap(await dataUrlToBlob(dataUrl));
+  try {
+    return { width: bitmap.width, height: bitmap.height };
+  } finally {
+    bitmap.close();
+  }
+}
+
+/** Downscale (if wider than maxWidth) and re-encode as JPEG at the given quality. */
+export async function compressImage(
+  dataUrl: string,
+  quality = 0.6,
+  maxWidth = 1024,
+): Promise<string> {
+  const bitmap = await createImageBitmap(await dataUrlToBlob(dataUrl));
+  try {
+    let width = bitmap.width;
+    let height = bitmap.height;
+    if (width > maxWidth) {
+      height = Math.round((height * maxWidth) / width);
+      width = maxWidth;
+    }
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Failed to get canvas context");
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const blob = await canvas.convertToBlob({ type: "image/jpeg", quality });
+    return await blobToDataUrl(blob);
+  } finally {
+    bitmap.close();
+  }
+}
+
+/** Crop a data-URL image to a pixel region. */
 export async function cropImage(
   dataUrl: string,
   region: { x: number; y: number; width: number; height: number },
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("Failed to get canvas context"));
-        return;
-      }
-
-      canvas.width = region.width;
-      canvas.height = region.height;
-
-      ctx.drawImage(
-        img,
-        region.x,
-        region.y,
-        region.width,
-        region.height,
-        0,
-        0,
-        region.width,
-        region.height,
-      );
-
-      resolve(canvas.toDataURL("image/png", 0.9));
-    };
-    img.onerror = () => reject(new Error("Failed to load image"));
-    img.src = dataUrl;
-  });
+  const bitmap = await createImageBitmap(await dataUrlToBlob(dataUrl));
+  try {
+    const canvas = new OffscreenCanvas(region.width, region.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Failed to get canvas context");
+    }
+    ctx.drawImage(
+      bitmap,
+      region.x,
+      region.y,
+      region.width,
+      region.height,
+      0,
+      0,
+      region.width,
+      region.height,
+    );
+    const blob = await canvas.convertToBlob({ type: "image/png" });
+    return await blobToDataUrl(blob);
+  } finally {
+    bitmap.close();
+  }
 }
 
 // ===================== Shared capture helper =====================
@@ -181,17 +236,12 @@ export async function captureVisibleTabWithElementCrop(
     const scaledPadding = safePadding * dpr;
 
     // Load image to get actual dimensions for bounds checking
-    const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Failed to load image for crop"));
-      img.src = dataUrl;
-    });
+    const { width: imgWidth, height: imgHeight } = await getImageSize(dataUrl);
 
     const x = Math.max(0, Math.round(elementRect.x - scaledPadding));
     const y = Math.max(0, Math.round(elementRect.y - scaledPadding));
-    const maxWidth = img.width - x;
-    const maxHeight = img.height - y;
+    const maxWidth = imgWidth - x;
+    const maxHeight = imgHeight - y;
     const width = Math.min(
       Math.round(elementRect.width + scaledPadding * 2),
       maxWidth,

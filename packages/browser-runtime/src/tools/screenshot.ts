@@ -5,6 +5,8 @@ import { RuntimeScreenshotStorage } from "../lib/screenshot-storage";
 import { getAutomationMode } from "../runtime/automation-mode";
 import {
   captureVisibleTabWithElementCrop,
+  compressImage,
+  getImageSize,
   MAX_PADDING,
 } from "./screenshot-helpers.js";
 import { getActiveTab } from "./tab-utils";
@@ -16,38 +18,47 @@ export type {
 } from "./screenshot-helpers.js";
 export { captureVisibleTabWithElementCrop } from "./screenshot-helpers.js";
 
-async function compressImage(
-  dataUrl: string,
-  quality: number = 0.6,
-  maxWidth: number = 1024,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("Failed to get canvas context"));
-        return;
-      }
+/**
+ * SILENT capture of the active tab's visible area (the raw PNG data URL) — never
+ * steals window focus, never writes to IndexedDB. Returns null when capture
+ * isn't possible (background mode, a restricted page, or no active tab).
+ */
+async function captureActiveVisibleTab(): Promise<string | null> {
+  // Background mode deliberately avoids touching the user's window.
+  if ((await getAutomationMode()) === "background") return null;
 
-      let width = img.width;
-      let height = img.height;
+  const tab = await getActiveTab();
+  if (!tab.id || !tab.windowId) return null;
+  if (
+    tab.url &&
+    (tab.url.startsWith("chrome://") ||
+      tab.url.startsWith("chrome-extension://") ||
+      tab.url.startsWith("edge://") ||
+      tab.url.startsWith("about:"))
+  ) {
+    return null;
+  }
 
-      if (width > maxWidth) {
-        height = (height * maxWidth) / width;
-        width = maxWidth;
-      }
-
-      canvas.width = width;
-      canvas.height = height;
-      ctx.drawImage(img, 0, 0, width, height);
-
-      resolve(canvas.toDataURL("image/jpeg", quality));
-    };
-    img.onerror = () => reject(new Error("Failed to load image"));
-    img.src = dataUrl;
+  const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+    format: "png",
+    quality: 90,
   });
+  return dataUrl?.startsWith("data:image/") ? dataUrl : null;
+}
+
+/**
+ * The viewport screenshot sent to the model for the "auto-attach a screenshot to
+ * every message" feature — compressed to a model-friendly size. Returns null on
+ * any failure (all swallowed).
+ */
+export async function captureViewportForAmbient(): Promise<string | null> {
+  try {
+    const raw = await captureActiveVisibleTab();
+    return raw ? await compressImage(raw, 0.6, 1024) : null;
+  } catch (error) {
+    console.warn("[AmbientScreenshot] capture skipped:", error);
+    return null;
+  }
 }
 
 export const captureScreenshotTool = tool({
@@ -138,35 +149,25 @@ When sendToLLM=true: Sends image to LLM (higher latency/cost, may capture sensit
       dataUrl = await compressImage(dataUrl, 0.6, 1024);
 
       // Extract image dimensions
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = dataUrl;
-      });
-      imageWidth = img.width;
-      imageHeight = img.height;
+      const size = await getImageSize(dataUrl);
+      imageWidth = size.width;
+      imageHeight = size.height;
 
       // Cache screenshot metadata for computer tool
       if (viewport) {
         cacheScreenshotMetadata(
           tab.id,
-          img.width,
-          img.height,
+          imageWidth,
+          imageHeight,
           viewport.width,
           viewport.height,
         );
       }
     } else {
       // Get original image dimensions for non-LLM screenshots
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = dataUrl;
-      });
-      imageWidth = img.width;
-      imageHeight = img.height;
+      const size = await getImageSize(dataUrl);
+      imageWidth = size.width;
+      imageHeight = size.height;
     }
 
     // Save screenshot to IndexedDB and get uid
@@ -280,35 +281,25 @@ When sendToLLM=true: Sends image to LLM (higher latency/cost) and enables coordi
       dataUrl = await compressImage(dataUrl, 0.6, 1024);
 
       // Extract image dimensions
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = dataUrl;
-      });
-      imageWidth = img.width;
-      imageHeight = img.height;
+      const size = await getImageSize(dataUrl);
+      imageWidth = size.width;
+      imageHeight = size.height;
 
       // Cache screenshot metadata for computer tool
       if (viewport) {
         cacheScreenshotMetadata(
           tabId,
-          img.width,
-          img.height,
+          imageWidth,
+          imageHeight,
           viewport.width,
           viewport.height,
         );
       }
     } else {
       // Get original image dimensions for non-LLM screenshots
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = dataUrl;
-      });
-      imageWidth = img.width;
-      imageHeight = img.height;
+      const size = await getImageSize(dataUrl);
+      imageWidth = size.width;
+      imageHeight = size.height;
     }
 
     // Save screenshot to IndexedDB and get uid
@@ -446,14 +437,8 @@ PREFER search_elements for finding/interacting with elements. Use this only when
     }
 
     // Extract image dimensions
-    const finalImg = new Image();
-    await new Promise<void>((resolve, reject) => {
-      finalImg.onload = () => resolve();
-      finalImg.onerror = () => reject(new Error("Failed to load image"));
-      finalImg.src = dataUrl;
-    });
-    const imageWidth = finalImg.width;
-    const imageHeight = finalImg.height;
+    const { width: imageWidth, height: imageHeight } =
+      await getImageSize(dataUrl);
 
     // Cache screenshot metadata for computer tool
     if (sendToLLM && viewport) {

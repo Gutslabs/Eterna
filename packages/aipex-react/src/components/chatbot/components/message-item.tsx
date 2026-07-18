@@ -1,4 +1,9 @@
-import { CopyIcon, PaperclipIcon, RefreshCcwIcon } from "lucide-react";
+import {
+  CameraIcon,
+  CopyIcon,
+  PaperclipIcon,
+  RefreshCcwIcon,
+} from "lucide-react";
 import { Fragment, memo, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { transformScreenshotPlaceholders } from "../../../lib/screenshot-utils";
@@ -133,15 +138,40 @@ function AttachmentCard({ part }: { part: UIContextPart | UIFilePart }) {
     (typeof part.metadata?.url === "string" && part.metadata.url) ||
     undefined;
 
+  // A viewport screenshot attached to the page chip (auto-screenshot feature):
+  // show it as the card thumbnail with a camera badge so the user can see the
+  // screen was captured and sent. Click to enlarge.
+  const screenshot =
+    typeof part.metadata?.screenshot === "string" &&
+    part.metadata.screenshot.startsWith("data:image/")
+      ? part.metadata.screenshot
+      : undefined;
+
   return (
     <div className={cardClass}>
-      <div className={boxClass}>
-        {favIconUrl ? (
-          <img src={favIconUrl} alt="" className="size-5 object-contain" />
-        ) : (
-          <span className="text-base">{getContextIcon(part.contextType)}</span>
-        )}
-      </div>
+      {screenshot ? (
+        <button
+          type="button"
+          onClick={() => setZoomed(true)}
+          className={cn(boxClass, "relative cursor-zoom-in p-0")}
+          title="Gönderilen ekran görüntüsü — büyütmek için tıkla"
+        >
+          <img src={screenshot} alt="" className="size-full object-cover" />
+          <span className="absolute right-0 bottom-0 flex items-center justify-center rounded-tl-md bg-black/65 p-0.5">
+            <CameraIcon className="size-2.5 text-white" />
+          </span>
+        </button>
+      ) : (
+        <div className={boxClass}>
+          {favIconUrl ? (
+            <img src={favIconUrl} alt="" className="size-5 object-contain" />
+          ) : (
+            <span className="text-base">
+              {getContextIcon(part.contextType)}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex min-w-0 flex-col leading-tight">
         <span className="truncate text-foreground text-sm">{part.label}</span>
         {subtitle && (
@@ -150,6 +180,23 @@ function AttachmentCard({ part }: { part: UIContextPart | UIFilePart }) {
           </span>
         )}
       </div>
+      {screenshot &&
+        zoomed &&
+        createPortal(
+          <button
+            type="button"
+            aria-label="Close screenshot preview"
+            onClick={() => setZoomed(false)}
+            className="fixed inset-0 z-[2147483647] flex cursor-zoom-out items-center justify-center border-0 bg-black/80 p-6"
+          >
+            <img
+              src={screenshot}
+              alt=""
+              className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+            />
+          </button>,
+          document.body,
+        )}
     </div>
   );
 }

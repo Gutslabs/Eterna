@@ -12,7 +12,10 @@
 import { AIPex, ContextManager, SessionStorage } from "@aipexstudio/aipex-core";
 import {
   allBrowserProviders,
+  captureViewportForAmbient,
   IndexedDBStorage,
+  loadMemories,
+  renderMemoriesForPrompt,
 } from "@aipexstudio/browser-runtime";
 import {
   startFreshGatewayThread,
@@ -23,6 +26,7 @@ import {
   createBrowserModel,
   loadAppSettings,
   loadAutomationMode,
+  loadAutoScreenshotEnabled,
   loadParallelAgentEnabled,
   resolveBrowserTools,
 } from "./browser-model";
@@ -42,12 +46,13 @@ export function initBackgroundChatHost(): ChatHost {
   let cached: { key: string; agent: ChatHostAgent } | null = null;
 
   const createAgent = async (): Promise<ChatHostAgent> => {
-    const [settings, mode, parallelEnabled] = await Promise.all([
+    const [settings, mode, parallelEnabled, memories] = await Promise.all([
       loadAppSettings(),
       loadAutomationMode(),
       loadParallelAgentEnabled(),
+      loadMemories(),
     ]);
-    const key = JSON.stringify({ settings, mode, parallelEnabled });
+    const key = JSON.stringify({ settings, mode, parallelEnabled, memories });
     if (cached && cached.key === key) {
       return cached.agent;
     }
@@ -61,9 +66,13 @@ export function initBackgroundChatHost(): ChatHost {
     const orchestratorTools = parallel
       ? [...resolveBrowserTools(mode), createRunSubagentTool()]
       : resolveBrowserTools(mode);
-    const instructions = parallel
+    const baseInstructions = parallel
       ? `${BROWSER_AGENT_CONFIG.instructions}\n\n${ORCHESTRATOR_GUIDANCE}`
       : BROWSER_AGENT_CONFIG.instructions;
+    const memoryBlock = renderMemoriesForPrompt(memories);
+    const instructions = memoryBlock
+      ? `${baseInstructions}\n\n${memoryBlock}`
+      : baseInstructions;
 
     const agent = AIPex.create({
       name: BROWSER_AGENT_CONFIG.name,
@@ -81,6 +90,11 @@ export function initBackgroundChatHost(): ChatHost {
         autoInitialize: true,
       }),
       maxTurns: BROWSER_AGENT_CONFIG.maxTurns,
+      // Summaries go through the same gateway as the chat model.
+      compression: {
+        model: createBrowserModel(settings),
+        ...BROWSER_AGENT_CONFIG.compression,
+      },
     });
     cached = { key, agent: agent as unknown as ChatHostAgent };
     return cached.agent;
@@ -100,6 +114,11 @@ export function initBackgroundChatHost(): ChatHost {
 
   const host = createChatHost({
     createAgent,
+    // Capture the viewport only after the user explicitly enables screen sharing.
+    captureViewport: async () =>
+      (await loadAutoScreenshotEnabled())
+        ? await captureViewportForAmbient()
+        : null,
     freshGatewayThread: startFreshGatewayThread,
     onActiveChange,
   });

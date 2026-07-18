@@ -9,6 +9,11 @@
  */
 
 import type { CollectorOptions } from "@aipexstudio/dom-snapshot";
+import {
+  serializePageForExtraction,
+  serializeSafeElementAttributes,
+  serializeSafeElementText,
+} from "../../lib/page-serialization";
 import { readSidebarOpen } from "../../lib/sidebar-open-flag";
 import { suppressStaleContextErrors } from "../../lib/suppress-stale-errors";
 
@@ -158,16 +163,8 @@ function startCapture() {
       classes: Array.from(target.classList).filter(
         (c) => !c.startsWith("aipex-") && !c.startsWith("plasmo-"),
       ),
-      textContent: target.textContent?.trim().substring(0, 200) || undefined,
-      attributes: Array.from(target.attributes).reduce(
-        (acc, attr) => {
-          if (!attr.name.startsWith("data-plasmo")) {
-            acc[attr.name] = attr.value;
-          }
-          return acc;
-        },
-        {} as Record<string, string>,
-      ),
+      textContent: serializeSafeElementText(target),
+      attributes: serializeSafeElementAttributes(target),
       rect: {
         x: rect.x,
         y: rect.y,
@@ -220,15 +217,50 @@ function handleMessage(
   sendResponse: SendResponse,
 ): boolean {
   if (message?.request === "get-page-text") {
-    // Return the page's readable text from the live DOM so the chat can
-    // attach it as context (the AI — including the gateway — can then read
-    // the page). Prefer the main/article region, fall back to the body.
+    // Hand back the page's HTML (lightly pruned) plus a readable-text fallback.
+    // Defuddle then runs in the extension/sidepanel context — a content script
+    // can't load module chunks on CSP-strict sites like x.com (the import
+    // resolves to the page origin and returns "MIME type text/html"), so the
+    // extraction itself can't happen here. Pruning drops heavy scripts/styles
+    // to shrink the payload but keeps JSON-LD so Defuddle still gets metadata.
     try {
-      const root = document.querySelector("main, article") ?? document.body;
-      const text = root instanceof HTMLElement ? root.innerText : "";
-      sendResponse({ text });
+      const serialized = serializePageForExtraction(document);
+      // What the user is actually looking at. The attached page text is the
+      // WHOLE page but the ambient screenshot is only the viewport, so a
+      // breadcrumb (current section heading + scroll depth) lets the sidebar
+      // resolve "what's this?" to the visible region rather than guessing.
+      let visible: { topHeading?: string; scrollPct?: number } | undefined;
+      try {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const scrollPct =
+          max > 0
+            ? Math.min(
+                100,
+                Math.max(0, Math.round((window.scrollY / max) * 100)),
+              )
+            : 0;
+        const mid = window.innerHeight * 0.5;
+        let topHeading: string | undefined;
+        for (const h of Array.from(
+          document.querySelectorAll("h1, h2, h3, h4"),
+        )) {
+          if (h.getBoundingClientRect().top > mid) break;
+          const text = (h.textContent || "").trim().replace(/\s+/g, " ");
+          if (text) topHeading = text.slice(0, 120);
+        }
+        visible = { topHeading, scrollPct };
+      } catch {
+        visible = undefined;
+      }
+      sendResponse({
+        html: serialized.html,
+        readable: serialized.readable,
+        url: location.href,
+        visible,
+        truncated: serialized.truncated,
+      });
     } catch {
-      sendResponse({ text: "" });
+      sendResponse({ html: "", readable: "", url: location.href });
     }
     return true;
   }

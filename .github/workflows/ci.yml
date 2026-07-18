@@ -34,7 +34,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Install Chrome for Puppeteer
         run: node node_modules/puppeteer/install.mjs
@@ -46,8 +46,17 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Dependency lint
+        run: npm run lint:dependencies
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
       - name: Type check
         run: npm run typecheck
 
       - name: Test
         run: npm run test
+
+      - name: Build
+        run: npm run build

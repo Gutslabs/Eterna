@@ -106,6 +106,33 @@ describe("Chatbot Component", () => {
 
       expect(screen.getByText("Welcome")).toBeInTheDocument();
     });
+
+    it("enables submit when pasted text is the only attachment", async () => {
+      const originalCreateObjectUrl = URL.createObjectURL;
+      URL.createObjectURL = vi.fn(() => "blob:pasted-text");
+
+      try {
+        await renderWithAct(<Chatbot agent={mockAgent} />);
+
+        fireEvent.paste(screen.getByRole("textbox"), {
+          clipboardData: {
+            items: [],
+            types: ["text/plain", "text/html"],
+            getData: (type: string) =>
+              type === "text/plain" ? "Selected page text" : "",
+          },
+        });
+
+        expect(screen.getByText("pasted-text.txt")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+      } finally {
+        if (originalCreateObjectUrl) {
+          URL.createObjectURL = originalCreateObjectUrl;
+        } else {
+          Reflect.deleteProperty(URL, "createObjectURL");
+        }
+      }
+    });
   });
 
   describe("component customization", () => {

@@ -21,6 +21,7 @@ import {
   PromptInputTextarea,
   PromptInputToolbar,
   PromptInputTools,
+  usePromptInputAttachments,
 } from "../../ai-elements/prompt-input";
 import { DEFAULT_MODELS } from "../constants";
 import { useComponentsContext, useConfigContext } from "../context";
@@ -37,6 +38,35 @@ export interface ExtendedInputAreaProps extends InputAreaProps {
   placeholderTexts?: string[];
   /** Message queue count */
   queueCount?: number;
+}
+
+function DefaultComposerSubmit({
+  value,
+  status,
+  submitStatus,
+  onStop,
+}: {
+  value: string;
+  status: InputAreaProps["status"];
+  submitStatus?: ChatStatus;
+  onStop?: () => void;
+}) {
+  const attachments = usePromptInputAttachments();
+
+  return (
+    <PromptInputSubmit
+      disabled={!value && attachments.files.length === 0 && !submitStatus}
+      status={submitStatus}
+      onClick={
+        status !== "idle"
+          ? (event) => {
+              event.preventDefault();
+              onStop?.();
+            }
+          : undefined
+      }
+    />
+  );
 }
 
 const PROVIDER_ORDER = ["OpenAI", "Claude", "Gemini", "Grok", "Other"] as const;
@@ -510,23 +540,11 @@ export function DefaultInputArea({
               },
             })
           ) : (
-            <PromptInputSubmit
-              disabled={!value && !submitStatus}
-              status={submitStatus}
-              // PromptInputSubmit is type="submit", so for ANY non-idle status
-              // (submitted, streaming, executing_tools, error) it must cancel
-              // the form submit and Stop/interrupt instead. Otherwise clicking
-              // it sends the draft — and since the page context is persistent,
-              // even an empty draft submits a card-only message rather than
-              // stopping. Only the idle state actually sends.
-              onClick={
-                status !== "idle"
-                  ? (e) => {
-                      e.preventDefault();
-                      onStop?.();
-                    }
-                  : undefined
-              }
+            <DefaultComposerSubmit
+              value={value}
+              status={status}
+              submitStatus={submitStatus}
+              onStop={onStop}
             />
           )}
         </PromptInputToolbar>

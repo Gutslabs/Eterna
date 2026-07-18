@@ -40,6 +40,119 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+function blobToText(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => resolve("");
+    reader.readAsText(blob);
+  });
+}
+
+const TEXT_ATTACHMENT_EXTENSIONS =
+  /\.(?:txt|md|markdown|csv|json|jsonl|xml|ya?ml|log|html?|css|jsx?|tsx?|py|sql)$/i;
+const TEXT_ATTACHMENT_MEDIA_TYPES = new Set([
+  "application/json",
+  "application/javascript",
+  "application/sql",
+  "application/typescript",
+  "application/xml",
+  "application/yaml",
+  "application/x-yaml",
+]);
+const MAX_TEXT_ATTACHMENT_CHARACTERS = 500_000;
+
+function isTextAttachment(mediaType: string, filename?: string): boolean {
+  const normalizedMediaType = mediaType.split(";", 1)[0]?.toLowerCase() ?? "";
+  return (
+    normalizedMediaType.startsWith("text/") ||
+    TEXT_ATTACHMENT_MEDIA_TYPES.has(normalizedMediaType) ||
+    Boolean(filename && TEXT_ATTACHMENT_EXTENSIONS.test(filename))
+  );
+}
+
+function decodeTextDataUrl(url: string): string {
+  if (!url.startsWith("data:")) {
+    return "";
+  }
+
+  const comma = url.indexOf(",");
+  if (comma === -1) {
+    return "";
+  }
+
+  const header = url.slice(5, comma);
+  const payload = url.slice(comma + 1);
+
+  try {
+    if (/;base64(?:;|$)/i.test(header)) {
+      const binary = atob(payload);
+      const bytes = Uint8Array.from(binary, (character) =>
+        character.charCodeAt(0),
+      );
+      return new TextDecoder().decode(bytes);
+    }
+    return decodeURIComponent(payload);
+  } catch {
+    return "";
+  }
+}
+
+function truncateTextAttachment(text: string): {
+  value: string;
+  truncated: boolean;
+} {
+  if (text.length <= MAX_TEXT_ATTACHMENT_CHARACTERS) {
+    return { value: text, truncated: false };
+  }
+
+  return {
+    value: `${text.slice(0, MAX_TEXT_ATTACHMENT_CHARACTERS)}\n\n[Attachment truncated by Eterna]`,
+    truncated: true,
+  };
+}
+
+async function attachmentsToTextContexts(
+  files: MessageAttachment[],
+): Promise<Context[]> {
+  const contexts: Context[] = [];
+
+  for (const [index, file] of files.entries()) {
+    const filename =
+      file instanceof File ? file.name : file.filename || `attachment-${index}`;
+    const mediaType = file instanceof Blob ? file.type : file.mediaType;
+
+    if (!isTextAttachment(mediaType, filename)) {
+      continue;
+    }
+
+    const text =
+      file instanceof Blob
+        ? await blobToText(file)
+        : decodeTextDataUrl(file.url);
+    if (!text) {
+      continue;
+    }
+
+    const { value, truncated } = truncateTextAttachment(text);
+    contexts.push({
+      id: `text-attachment-${index}`,
+      type: "file",
+      providerId: "ui-attachment",
+      label: filename,
+      value,
+      metadata: {
+        mediaType,
+        truncated,
+      },
+      timestamp: Date.now(),
+    });
+  }
+
+  return contexts;
+}
+
 /**
  * Convert image attachments into the vision inputs the agent forwards to the
  * model. Non-image files are skipped (the model can't read them). Already-
@@ -338,20 +451,25 @@ export function useChat(
       const epoch = runEpochRef.current;
 
       // Convert ContextItem to core Context type
-      const coreContexts: Context[] | undefined = contexts?.map((ctx) => ({
-        id: ctx.id,
-        type: ctx.type as Context["type"],
-        providerId: "ui-selected",
-        label: ctx.label,
-        value: ctx.value,
-        metadata: ctx.metadata,
-        timestamp: Date.now(),
-      }));
+      const coreContexts: Context[] =
+        contexts?.map((ctx) => ({
+          id: ctx.id,
+          type: ctx.type as Context["type"],
+          providerId: "ui-selected",
+          label: ctx.label,
+          value: ctx.value,
+          metadata: ctx.metadata,
+          timestamp: Date.now(),
+        })) ?? [];
 
-      const images =
+      const [images, textAttachmentContexts] =
         files && files.length > 0
-          ? await attachmentsToImageInputs(files)
-          : undefined;
+          ? await Promise.all([
+              attachmentsToImageInputs(files),
+              attachmentsToTextContexts(files),
+            ])
+          : [[], []];
+      coreContexts.push(...textAttachmentContexts);
 
       // Stop pressed during the attachment conversion above — don't start
       // the generator the user already cancelled.
@@ -361,7 +479,7 @@ export function useChat(
 
       const events = agent.chat(text, {
         sessionId: sessionId ?? undefined,
-        contexts: coreContexts,
+        contexts: coreContexts.length > 0 ? coreContexts : undefined,
         images: images && images.length > 0 ? images : undefined,
       });
       await processAgentEvents(events);

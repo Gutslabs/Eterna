@@ -194,6 +194,34 @@ describe("useChat", () => {
     expect(agent.chat).not.toHaveBeenCalled();
   });
 
+  it("forwards pasted text attachments as model-readable file context", async () => {
+    const { agent } = setupDefaultAgent();
+    const { result } = await renderUseChat(agent);
+    const attachment = {
+      type: "file" as const,
+      mediaType: "text/plain;charset=utf-8",
+      filename: "pasted-text.txt",
+      url: "data:text/plain;charset=utf-8;base64,U2XDp2lsaSBUw7xya8OnZSBtZXRpbg==",
+    };
+
+    await act(async () => {
+      await result.current.sendMessage("", [attachment]);
+    });
+
+    expect(agent.chat).toHaveBeenCalledWith("", {
+      sessionId: undefined,
+      contexts: [
+        expect.objectContaining({
+          type: "file",
+          providerId: "ui-attachment",
+          label: "pasted-text.txt",
+          value: "Seçili Türkçe metin",
+        }),
+      ],
+    });
+    expect(result.current.messages[0]?.parts).toContainEqual(attachment);
+  });
+
   it("should continue an existing conversation with session id", async () => {
     const { agent } = setupDefaultAgent();
     (agent.chat as ReturnType<typeof vi.fn>)

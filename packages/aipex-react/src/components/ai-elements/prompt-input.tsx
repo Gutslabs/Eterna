@@ -85,6 +85,26 @@ export type ContextItem = {
   persistent?: boolean;
 };
 
+const PASTED_TEXT_FILE_MIN_CHARACTERS = 1000;
+const PASTED_TEXT_FILE_MIN_LINES = 8;
+
+function shouldAttachPastedText(
+  text: string,
+  options: { hasHtml: boolean; hasFiles: boolean },
+): boolean {
+  if (!text.trim()) {
+    return false;
+  }
+
+  const lineCount = text.split(/\r?\n/).length;
+  return (
+    options.hasHtml ||
+    options.hasFiles ||
+    text.length >= PASTED_TEXT_FILE_MIN_CHARACTERS ||
+    lineCount >= PASTED_TEXT_FILE_MIN_LINES
+  );
+}
+
 // Context icons mapping
 const CONTEXT_ICONS: Record<ContextItemType, ReactNode> = {
   page: <GlobeIcon className="size-4" />,
@@ -1276,9 +1296,10 @@ export const PromptInputTextarea = ({
   );
 
   const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
-    const items = event.clipboardData?.items;
+    const clipboardData = event.clipboardData;
+    const items = clipboardData?.items;
 
-    if (!items) {
+    if (!clipboardData || !items) {
       return;
     }
 
@@ -1291,6 +1312,22 @@ export const PromptInputTextarea = ({
           files.push(file);
         }
       }
+    }
+
+    const text = clipboardData.getData("text/plain");
+    const hasHtml = Array.from(clipboardData.types).includes("text/html");
+    if (
+      shouldAttachPastedText(text, {
+        hasHtml,
+        hasFiles: files.length > 0,
+      })
+    ) {
+      files.push(
+        new File([text], "pasted-text.txt", {
+          type: "text/plain;charset=utf-8",
+          lastModified: Date.now(),
+        }),
+      );
     }
 
     if (files.length > 0) {

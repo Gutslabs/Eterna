@@ -2,11 +2,14 @@ import type { UIMessage, UIToolPart } from "../../../types";
 
 export type ActivityStep =
   | { kind: "thought"; key: string; text: string }
+  | { kind: "browser"; key: string; text: string }
   | { kind: "tool"; key: string; part: UIToolPart };
 
 export type TurnBlock =
   | { type: "activity"; key: string; steps: ActivityStep[] }
   | { type: "message"; key: string; message: UIMessage };
+
+export const BROWSER_ACTIVITY_SEPARATOR = "\u001e";
 
 /**
  * Lay a turn's assistant messages out as an ordered sequence of blocks:
@@ -39,6 +42,21 @@ export function buildTurnBlocks(assistantMessages: UIMessage[]): TurnBlock[] {
         return;
       }
       if (part.type === "reasoning" && part.text.trim()) {
+        if (part.text.includes(BROWSER_ACTIVITY_SEPARATOR)) {
+          part.text
+            .split(BROWSER_ACTIVITY_SEPARATOR)
+            .map((text) => text.trim())
+            .filter(Boolean)
+            .forEach((text, activityIndex) => {
+              const activityKey = `${key}-browser-${activityIndex}`;
+              pushStep(activityKey, {
+                kind: "browser",
+                key: activityKey,
+                text,
+              });
+            });
+          return;
+        }
         pushStep(key, { kind: "thought", key, text: part.text });
         return;
       }

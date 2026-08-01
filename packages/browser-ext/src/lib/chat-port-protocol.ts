@@ -24,6 +24,7 @@ export type WireAgentEvent = AgentEvent; // structurally identical; error fields
 
 export interface StartTurnOptions {
   sessionId?: string;
+  routeId?: string;
   contexts?: unknown[];
   images?: ImageInput[];
 }
@@ -37,12 +38,28 @@ export type ChatHostInbound =
       options: StartTurnOptions;
     }
   | { type: "interrupt"; clientId: string; runId: string }
-  | { type: "attach"; clientId: string }
+  | {
+      type: "detach";
+      clientId: string;
+      runId: string;
+      consumerId?: string;
+      conversationId?: string;
+      persistencePending?: boolean;
+      userMessageId?: string;
+    }
+  | {
+      type: "attach";
+      clientId: string;
+      requestId: string;
+      conversationId?: string;
+    }
   | {
       type: "bind_conversation";
       clientId: string;
       runId: string;
       conversationId: string;
+      persistenceReady?: boolean;
+      userMessageId?: string;
     }
   | {
       type: "rpc";
@@ -58,6 +75,7 @@ export type ChatHostInbound =
 export interface RunSnapshot {
   runId: string;
   userText: string;
+  userMessageId: string | null;
   conversationId: string | null;
   sessionId: string | null;
   done: boolean;
@@ -75,8 +93,8 @@ export type ChatHostOutbound =
   | { type: "event"; runId: string; event: WireAgentEvent }
   | { type: "turn_done"; runId: string; interrupted: boolean }
   | { type: "start_rejected"; runId: string; reason: "busy" }
-  | { type: "replay"; run: RunSnapshot }
-  | { type: "no_active_run" }
+  | { type: "replay"; requestId: string; run: RunSnapshot }
+  | { type: "no_active_run"; requestId: string }
   | {
       type: "rpc_result";
       reqId: string;

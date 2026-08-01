@@ -2,6 +2,7 @@ import type { AgentEvent } from "@aipexstudio/aipex-core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ChatHostAgent,
+  type ChatHostAgentContext,
   type ChatPortLike,
   createChatHost,
 } from "./chat-host";
@@ -167,7 +168,7 @@ describe("createChatHost", () => {
 
     const second = fakePort();
     host.handlePort(second.port);
-    second.send({ type: "attach", clientId: "c1" });
+    second.send({ type: "attach", clientId: "c1", requestId: "a1" });
 
     const replay = second.sent.find((m) => m.type === "replay");
     expect(replay).toBeDefined();
@@ -282,6 +283,353 @@ describe("createChatHost", () => {
     });
   });
 
+  it("keeps a detached run alive while a new run streams independently", async () => {
+    const first = scriptedAgent();
+    const second = scriptedAgent();
+    const onActiveChange = vi.fn();
+    const createAgent = vi
+      .fn<() => Promise<ChatHostAgent>>()
+      .mockResolvedValueOnce(first.agent)
+      .mockResolvedValueOnce(second.agent);
+    const host = createChatHost({ createAgent, onActiveChange });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "first",
+      options: {},
+    });
+    await vi.waitFor(() => {
+      expect(createAgent).toHaveBeenCalledTimes(1);
+    });
+    ui.send({
+      type: "detach",
+      clientId: "c1",
+      runId: "r1",
+      conversationId: "conv_1",
+    });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r2",
+      text: "second",
+      options: {},
+    });
+    await vi.waitFor(() => {
+      expect(createAgent).toHaveBeenCalledTimes(2);
+    });
+
+    first.push(delta("old answer"));
+    second.push(delta("new answer"));
+    await vi.waitFor(() => {
+      const eventRunIds = ui.sent
+        .filter((message) => message.type === "event")
+        .map((message) => (message.type === "event" ? message.runId : ""));
+      expect(eventRunIds).toEqual(expect.arrayContaining(["r1", "r2"]));
+    });
+
+    first.push(null);
+    await vi.waitFor(() => {
+      expect(host.getRun("r1", "c1")?.done).toBe(true);
+    });
+    expect(host.getRun("r1", "c1")?.completedDetached).toBe(true);
+    expect(host.getRun("r2", "c1")?.done).toBe(false);
+    expect(onActiveChange).toHaveBeenCalledWith(true);
+    expect(onActiveChange).not.toHaveBeenCalledWith(false);
+    expect(
+      ui.sent.some(
+        (message) =>
+          message.type === "start_rejected" && message.runId === "r2",
+      ),
+    ).toBe(false);
+
+    second.push(null);
+    await vi.waitFor(() => {
+      expect(host.getRun("r2", "c1")?.done).toBe(true);
+    });
+    expect(onActiveChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps the gateway route stable across turns in one session", async () => {
+    const first = scriptedAgent();
+    const second = scriptedAgent();
+    const contexts: Array<ChatHostAgentContext | undefined> = [];
+    const host = createChatHost({
+      createAgent: async (context) => {
+        contexts.push(context);
+        return contexts.length === 1 ? first.agent : second.agent;
+      },
+    });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "first",
+      options: {},
+    });
+    first.push({ type: "session_created", sessionId: "session_1" });
+    first.push(null);
+    await vi.waitFor(() => {
+      expect(host.getRun("r1", "c1")?.done).toBe(true);
+    });
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r2",
+      text: "follow up",
+      options: { sessionId: "session_1" },
+    });
+    second.push(null);
+    await vi.waitFor(() => {
+      expect(host.getRun("r2", "c1")?.done).toBe(true);
+    });
+
+    expect(contexts[0]?.routeId).toBe("c1:r1");
+    expect(contexts[1]?.routeId).toBe("c1:r1");
+  });
+
+  it("prefers a client route that survives a background host restart", async () => {
+    const contexts: Array<ChatHostAgentContext | undefined> = [];
+
+    const runOnFreshHost = async (runId: string) => {
+      const scripted = scriptedAgent();
+      const host = createChatHost({
+        createAgent: async (context) => {
+          contexts.push(context);
+          return scripted.agent;
+        },
+      });
+      const ui = fakePort();
+      host.handlePort(ui.port);
+      ui.send({
+        type: "start_turn",
+        clientId: "c1",
+        runId,
+        text: "message",
+        options: {
+          sessionId: "session_1",
+          routeId: "persistent-route",
+        },
+      });
+      scripted.push(null);
+      await vi.waitFor(() => {
+        expect(host.getRun(runId, "c1")?.done).toBe(true);
+      });
+    };
+
+    await runOnFreshHost("r1");
+    await runOnFreshHost("r2");
+
+    expect(contexts.map((context) => context?.routeId)).toEqual([
+      "persistent-route",
+      "persistent-route",
+    ]);
+  });
+
+  it("waits for the detached snapshot before persisting a completed run", async () => {
+    const scripted = scriptedAgent();
+    const onRunComplete = vi.fn(async () => undefined);
+    const host = createChatHost({
+      createAgent: async () => scripted.agent,
+      onRunComplete,
+    });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "question",
+      options: {},
+    });
+    ui.send({
+      type: "detach",
+      clientId: "c1",
+      runId: "r1",
+      conversationId: "conv_1",
+      persistencePending: true,
+      userMessageId: "user_1",
+    });
+    expect(host.getRun("r1", "c1")?.userMessageId).toBe("user_1");
+    scripted.push(delta("final answer"));
+    scripted.push(null);
+
+    await vi.waitFor(() => {
+      expect(host.getRun("r1", "c1")?.done).toBe(true);
+    });
+    expect(onRunComplete).not.toHaveBeenCalled();
+
+    ui.send({
+      type: "bind_conversation",
+      clientId: "c1",
+      runId: "r1",
+      conversationId: "conv_1",
+      persistenceReady: true,
+      userMessageId: "user_1",
+    });
+    await vi.waitFor(() => {
+      expect(onRunComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onRunComplete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "r1",
+        userMessageId: "user_1",
+        conversationId: "conv_1",
+        done: true,
+        completedDetached: true,
+        events: [delta("final answer")],
+      }),
+    );
+  });
+
+  it("attaches to the run bound to the requested conversation", async () => {
+    const first = scriptedAgent();
+    const second = scriptedAgent();
+    const createAgent = vi
+      .fn<() => Promise<ChatHostAgent>>()
+      .mockResolvedValueOnce(first.agent)
+      .mockResolvedValueOnce(second.agent);
+    const host = createChatHost({ createAgent });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "first",
+      options: {},
+    });
+    ui.send({
+      type: "bind_conversation",
+      clientId: "c1",
+      runId: "r1",
+      conversationId: "conv_1",
+    });
+    ui.send({ type: "detach", clientId: "c1", runId: "r1" });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r2",
+      text: "second",
+      options: {},
+    });
+    ui.send({
+      type: "bind_conversation",
+      clientId: "c1",
+      runId: "r2",
+      conversationId: "conv_2",
+    });
+    ui.send({ type: "detach", clientId: "c1", runId: "r2" });
+
+    ui.send({
+      type: "attach",
+      clientId: "c1",
+      requestId: "attach_1",
+      conversationId: "conv_1",
+    });
+    expect(ui.sent).toContainEqual(
+      expect.objectContaining({
+        type: "replay",
+        requestId: "attach_1",
+        run: expect.objectContaining({
+          runId: "r1",
+          conversationId: "conv_1",
+        }),
+      }),
+    );
+
+    first.push(null);
+    second.push(null);
+    await vi.waitFor(() => {
+      expect(host.getRun("r1", "c1")?.done).toBe(true);
+      expect(host.getRun("r2", "c1")?.done).toBe(true);
+    });
+  });
+
+  it("ignores a stale consumer detaching after a newer attachment", async () => {
+    const first = scriptedAgent();
+    const second = scriptedAgent();
+    const createAgent = vi
+      .fn<() => Promise<ChatHostAgent>>()
+      .mockResolvedValueOnce(first.agent)
+      .mockResolvedValueOnce(second.agent);
+    const host = createChatHost({ createAgent });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "first",
+      options: {},
+    });
+    ui.send({
+      type: "attach",
+      clientId: "c1",
+      requestId: "older-consumer",
+    });
+    ui.send({
+      type: "attach",
+      clientId: "c1",
+      requestId: "newer-consumer",
+    });
+    ui.send({
+      type: "detach",
+      clientId: "c1",
+      runId: "r1",
+      consumerId: "older-consumer",
+    });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "rejected",
+      text: "must stay busy",
+      options: {},
+    });
+    expect(ui.sent).toContainEqual({
+      type: "start_rejected",
+      runId: "rejected",
+      reason: "busy",
+    });
+
+    ui.send({
+      type: "detach",
+      clientId: "c1",
+      runId: "r1",
+      consumerId: "newer-consumer",
+    });
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r2",
+      text: "now allowed",
+      options: {},
+    });
+    expect(
+      ui.sent.some(
+        (message) =>
+          message.type === "start_rejected" && message.runId === "r2",
+      ),
+    ).toBe(false);
+
+    first.push(null);
+    second.push(null);
+    await vi.waitFor(() => {
+      expect(host.getRun("r1", "c1")?.done).toBe(true);
+      expect(host.getRun("r2", "c1")?.done).toBe(true);
+    });
+  });
+
   it("interrupt closes the agent generator and reports an interrupted turn", async () => {
     const scripted = scriptedAgent();
     const host = createChatHost({ createAgent: async () => scripted.agent });
@@ -363,9 +711,12 @@ describe("createChatHost", () => {
       text: "private prompt",
       options: {},
     });
-    other.send({ type: "attach", clientId: "other" });
+    other.send({ type: "attach", clientId: "other", requestId: "a1" });
 
-    expect(other.sent).toContainEqual({ type: "no_active_run" });
+    expect(other.sent).toContainEqual({
+      type: "no_active_run",
+      requestId: "a1",
+    });
     scripted.push(delta("private response"));
     await vi.waitFor(() => {
       expect(owner.sent.some((message) => message.type === "event")).toBe(true);
@@ -378,7 +729,7 @@ describe("createChatHost", () => {
     });
   });
 
-  it("does not let another sidebar reset the active gateway thread", async () => {
+  it("invalidates local gateway identity without resetting an active web thread", async () => {
     const scripted = scriptedAgent();
     const freshGatewayThread = vi.fn();
     const host = createChatHost({
@@ -414,7 +765,26 @@ describe("createChatHost", () => {
         }),
       );
     });
-    expect(freshGatewayThread).not.toHaveBeenCalled();
+    expect(freshGatewayThread).toHaveBeenCalledWith("catgpt-browser", {
+      resetRemote: false,
+    });
+
+    other.send({
+      type: "rpc",
+      clientId: "other",
+      reqId: "rpc2",
+      method: "fresh_gateway_thread",
+      args: { model: "catgpt-browser", resetRemote: false },
+    });
+    await vi.waitFor(() => {
+      expect(other.sent).toContainEqual(
+        expect.objectContaining({
+          type: "rpc_result",
+          reqId: "rpc2",
+          ok: true,
+        }),
+      );
+    });
 
     scripted.push(null);
     await vi.waitFor(() => {
@@ -530,7 +900,9 @@ describe("createChatHost", () => {
     });
     expect(scripted.rollback).toHaveBeenCalledWith("s9");
     expect(scripted.deleteSession).toHaveBeenCalledWith("s9");
-    expect(fresh).toHaveBeenCalledWith("gemini-3.1-pro-preview");
+    expect(fresh).toHaveBeenCalledWith("gemini-3.1-pro-preview", {
+      resetRemote: true,
+    });
     const results = ui.sent.filter((m) => m.type === "rpc_result");
     expect(results.every((m) => m.type === "rpc_result" && m.ok)).toBe(true);
   });

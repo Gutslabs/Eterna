@@ -12,6 +12,8 @@ import type {
   ChatbotSlots,
   ChatbotTheme,
   ChatConfig,
+  ChatResetOptions,
+  ChatRunDetachOptions,
   ChatStatus,
   ContextItem,
   MessageAttachment,
@@ -27,6 +29,14 @@ export interface ChatContextValue {
   status: ChatStatus;
   /** Current session ID */
   sessionId: string | null;
+  /** Transport run currently rendered by this UI, when identified. */
+  activeRunId: string | null;
+  /** Read the active run synchronously for navigation actions. */
+  getActiveRunId: () => string | null;
+  /** Read the adapter's latest messages without waiting for React to commit. */
+  getMessagesSnapshot: () => UIMessage[];
+  /** Detach the active transport synchronously without cancelling its run. */
+  detachActiveRun: (options?: ChatRunDetachOptions) => string | null;
   /** Latest token metrics from most recent execution */
   metrics: AgentMetrics | null;
   /** Send a message */
@@ -40,7 +50,7 @@ export interface ChatContextValue {
   /** Interrupt current operation */
   interrupt: () => Promise<void>;
   /** Reset chat */
-  reset: () => void;
+  reset: (options?: ChatResetOptions) => void;
   /** Regenerate last response */
   regenerate: () => Promise<void>;
   /** Set messages directly */
@@ -48,7 +58,7 @@ export interface ChatContextValue {
   /** Attach an externally produced AgentEvent stream as the current turn */
   attachExternalTurn: (
     events: AsyncGenerator<AgentEvent>,
-    options?: { userText?: string },
+    options?: { userText?: string; userMessageId?: string },
   ) => Promise<void>;
 }
 

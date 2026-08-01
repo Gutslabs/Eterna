@@ -11,10 +11,13 @@
 import { FakeMouse } from "@aipexstudio/aipex-react/components/fake-mouse";
 import type { FakeMouseController } from "@aipexstudio/aipex-react/components/fake-mouse/types";
 import React from "react";
-import ReactDOM from "react-dom/client";
+import ReactDOM, { type Root } from "react-dom/client";
 import { SelectionAction } from "../../lib/selection-action";
 import { dispatchSidebarCommand } from "../../lib/sidebar-commands";
-import { SidebarApp } from "../../lib/sidebar-overlay";
+import {
+  restoreStaleSidebarRootStyles,
+  SidebarApp,
+} from "../../lib/sidebar-overlay";
 
 export { dispatchSidebarCommand };
 
@@ -93,6 +96,29 @@ const ContentApp = () => (
 
 let mountRequested = false;
 
+type ReactRootContainer = HTMLElement & {
+  __aipexReactRoot?: Root;
+};
+
+function removeReactRoot(id: string, restorePageShift = false): void {
+  const existing = document.getElementById(id) as ReactRootContainer | null;
+  if (!existing) return;
+  const reactRoot = existing.__aipexReactRoot;
+  let needsLegacyRestore = reactRoot === undefined;
+  if (reactRoot) {
+    try {
+      reactRoot.unmount();
+    } catch {
+      // An extension update can invalidate the old root's execution context.
+      needsLegacyRestore = true;
+    }
+  }
+  if (restorePageShift && needsLegacyRestore) {
+    restoreStaleSidebarRootStyles(document.documentElement);
+  }
+  existing.remove();
+}
+
 export function mountUi(): void {
   if (mountRequested) return;
   mountRequested = true;
@@ -106,13 +132,14 @@ export function mountUi(): void {
 function mount() {
   // Re-injection (a tab opened before the extension loaded, or re-injected
   // after an update) should replace the previous mount rather than stack a
-  // second copy on top — so clear any existing roots first.
-  document.getElementById("aipex-content-root")?.remove();
-  document.getElementById("aipex-sidebar-root")?.remove();
+  // second copy on top. Unmount first so React restores page styles/listeners;
+  // legacy roots without an unmount handle use the style snapshot fallback.
+  removeReactRoot("eterna-content-root");
+  removeReactRoot("eterna-sidebar-root", true);
 
   // Fake mouse overlay (shadow DOM for isolation; all styling is inline).
   const container = document.createElement("div");
-  container.id = "aipex-content-root";
+  container.id = "eterna-content-root";
   document.body.appendChild(container);
 
   const shadowRoot = container.attachShadow({ mode: "open" });
@@ -123,7 +150,9 @@ function mount() {
   style.textContent = ":host { all: initial; }";
   shadowRoot.appendChild(style);
 
-  ReactDOM.createRoot(shadowContainer).render(
+  const contentRoot = ReactDOM.createRoot(shadowContainer);
+  (container as ReactRootContainer).__aipexReactRoot = contentRoot;
+  contentRoot.render(
     <React.StrictMode>
       <ContentApp />
     </React.StrictMode>,
@@ -133,14 +162,16 @@ function mount() {
   // can't bleed into the panel container.
   if (window.top === window.self) {
     const sidebarContainer = document.createElement("div");
-    sidebarContainer.id = "aipex-sidebar-root";
+    sidebarContainer.id = "eterna-sidebar-root";
     document.documentElement.appendChild(sidebarContainer);
 
     const sidebarShadow = sidebarContainer.attachShadow({ mode: "open" });
     const sidebarMount = document.createElement("div");
     sidebarShadow.appendChild(sidebarMount);
 
-    ReactDOM.createRoot(sidebarMount).render(
+    const sidebarRoot = ReactDOM.createRoot(sidebarMount);
+    (sidebarContainer as ReactRootContainer).__aipexReactRoot = sidebarRoot;
+    sidebarRoot.render(
       <React.StrictMode>
         <SidebarApp />
         <SelectionAction />

@@ -5,9 +5,7 @@
  * VoiceInput pulls in three.js (particle visualization) and the VAD stack, so
  * it is loaded lazily — text-mode chats never pay for it.
  *
- * Every submit passes through withYoutubeTranscriptChunk: when a YouTube video
- * is attached as context, the next 10-minute transcript window rides along
- * with the message.
+ * YouTube submissions are expanded into a sequential 10-minute queue.
  */
 
 import type { ContextItem } from "@aipexstudio/aipex-react/components/ai-elements/prompt-input";
@@ -20,13 +18,25 @@ import type {
   InputAreaProps,
   MessageAttachment,
 } from "@aipexstudio/aipex-react/types";
-import { lazy, Suspense, useCallback, useRef } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   CURRENT_PAGE_CONTEXT_ID,
   readActivePageContext,
 } from "./browser-context-loader";
 import { useInputMode } from "./input-mode-context";
-import { withYoutubeTranscriptChunk } from "./youtube-transcript-feed";
+import {
+  cancelYoutubeTranscriptQueue,
+  getYoutubeTranscriptQueueProgress,
+  runYoutubeTranscriptQueue,
+  subscribeYoutubeTranscriptQueueProgress,
+} from "./youtube-transcript-feed";
 
 const VoiceInput = lazy(() =>
   import("@aipexstudio/aipex-react/components/voice").then((module) => ({
@@ -36,11 +46,25 @@ const VoiceInput = lazy(() =>
 
 export function BrowserChatInputArea(props: InputAreaProps) {
   const { inputMode, setInputMode } = useInputMode();
-  const { messages } = useChatContext();
+  const { messages, sendMessage } = useChatContext();
+  const [queueProgress, setQueueProgress] = useState(
+    getYoutubeTranscriptQueueProgress,
+  );
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
-  const onSubmitRef = useRef(props.onSubmit);
-  onSubmitRef.current = props.onSubmit;
+  const onChangeRef = useRef(props.onChange);
+  onChangeRef.current = props.onChange;
+  const onStopRef = useRef(props.onStop);
+  onStopRef.current = props.onStop;
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+
+  useEffect(
+    () => subscribeYoutubeTranscriptQueueProgress(setQueueProgress),
+    [],
+  );
+
+  useEffect(() => cancelYoutubeTranscriptQueue, []);
 
   const handleSubmit = useCallback(
     async (
@@ -48,6 +72,8 @@ export function BrowserChatInputArea(props: InputAreaProps) {
       files?: MessageAttachment[],
       contexts?: ContextItem[],
     ) => {
+      onChangeRef.current("");
+
       // The composer hides the page chip on an EMPTY conversation (the
       // welcome page-card represents it) — guarantee the page context rides
       // along for that first send. Must run before the transcript chunk
@@ -69,14 +95,21 @@ export function BrowserChatInputArea(props: InputAreaProps) {
         }
       }
 
-      const enriched = await withYoutubeTranscriptChunk(
-        withPage,
-        messagesRef.current,
-      );
-      onSubmitRef.current(text, files, enriched);
+      await runYoutubeTranscriptQueue({
+        text,
+        files,
+        contexts: withPage,
+        send: (queuedText, queuedFiles, queuedContexts) =>
+          sendMessageRef.current(queuedText, queuedFiles, queuedContexts),
+      });
     },
     [],
   );
+
+  const handleStop = useCallback(() => {
+    cancelYoutubeTranscriptQueue();
+    onStopRef.current?.();
+  }, []);
 
   const handleTranscript = useCallback(
     (text: string) => {
@@ -112,6 +145,13 @@ export function BrowserChatInputArea(props: InputAreaProps) {
     <DefaultInputArea
       {...(props as ExtendedInputAreaProps)}
       onSubmit={handleSubmit}
+      onStop={handleStop}
+      queueCount={queueProgress?.queuedParts ?? 0}
+      queueLabel={
+        queueProgress
+          ? `YouTube ${queueProgress.currentRange} · ${queueProgress.currentPart}/${queueProgress.totalParts}`
+          : undefined
+      }
     />
   );
 }

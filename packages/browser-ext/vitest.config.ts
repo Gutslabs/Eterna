@@ -41,6 +41,14 @@ export default defineConfig({
         find: "@aipexstudio/browser-runtime",
         replacement: path.resolve(__dirname, "../browser-runtime/src/index.ts"),
       },
+      {
+        find: /^@aipexstudio\/aipex-react\/(.*)$/,
+        replacement: path.resolve(__dirname, "../aipex-react/src/$1"),
+      },
+      {
+        find: "@aipexstudio/aipex-react",
+        replacement: path.resolve(__dirname, "../aipex-react/src/index.ts"),
+      },
     ],
   },
 });

@@ -17,6 +17,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "build:css": "npx tailwindcss -i ./src/tailwind.css -o ./src/style.css --minify",
+    "install:native-host": "node native-host/install-native-host.mjs",
     "typecheck": "tsc --project tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest"

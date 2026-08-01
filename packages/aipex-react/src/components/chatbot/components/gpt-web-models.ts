@@ -1,12 +1,6 @@
 import type { ModelEntry } from "./model-picker";
 
-export const GPT_WEB_MODEL_FAMILIES = [
-  "GPT-5.6 Sol",
-  "GPT-5.5",
-  "GPT-5.4",
-  "GPT-5.3",
-  "o3",
-] as const;
+export const GPT_WEB_MODEL_FAMILIES = ["GPT-5.6 Sol"] as const;
 
 export const GPT_WEB_INTELLIGENCE_LEVELS = [
   "Instant",
@@ -17,44 +11,79 @@ export const GPT_WEB_INTELLIGENCE_LEVELS = [
 const DEFAULT_GPT_WEB_FAMILY = GPT_WEB_MODEL_FAMILIES[0];
 const DEFAULT_GPT_WEB_INTELLIGENCE = "Instant";
 
-const FAMILY_STATUS: Partial<
-  Record<(typeof GPT_WEB_MODEL_FAMILIES)[number], string>
+// Retired families a user may still have saved resolve to the current model
+// instead of stranding them on a gateway id the picker no longer offers.
+const FAMILY_ALIASES: Record<string, (typeof GPT_WEB_MODEL_FAMILIES)[number]> =
+  {
+    "gpt-5.6 sol": "GPT-5.6 Sol",
+    "gpt-5.5": "GPT-5.6 Sol",
+    "gpt-5.4": "GPT-5.6 Sol",
+    "gpt-5.3": "GPT-5.6 Sol",
+    o3: "GPT-5.6 Sol",
+  };
+
+const INTELLIGENCE_ALIASES: Record<
+  string,
+  (typeof GPT_WEB_INTELLIGENCE_LEVELS)[number]
 > = {
-  "GPT-5.4": "Leaving on July 23",
+  instant: "Instant",
+  medium: "Medium",
+  high: "High",
 };
 
-const INTELLIGENCE_STATUS: Partial<
-  Record<(typeof GPT_WEB_INTELLIGENCE_LEVELS)[number], string>
-> = {
-  Instant: "5.5",
-};
+function gptWebModelValue(
+  family: (typeof GPT_WEB_MODEL_FAMILIES)[number],
+  intelligence: (typeof GPT_WEB_INTELLIGENCE_LEVELS)[number],
+): string {
+  return `catgpt-browser::${family}|${intelligence}`;
+}
 
 export function normalizeGptWebModelValue(value: string): string {
   const trimmed = value.trim();
-  if (trimmed === "catgpt-browser") {
-    return `catgpt-browser::${DEFAULT_GPT_WEB_FAMILY}|${DEFAULT_GPT_WEB_INTELLIGENCE}`;
+  const lowered = trimmed.toLowerCase();
+  if (lowered !== "catgpt-browser" && !lowered.startsWith("catgpt-browser::")) {
+    return value;
+  }
+  if (lowered === "catgpt-browser") {
+    return gptWebModelValue(
+      DEFAULT_GPT_WEB_FAMILY,
+      DEFAULT_GPT_WEB_INTELLIGENCE,
+    );
   }
 
-  const match = /^catgpt-browser::(instant|medium|high)$/i.exec(trimmed);
-  if (!match) return value;
+  const match = /^catgpt-browser::([^|]+)(?:\|(.+))?$/i.exec(trimmed);
+  if (!match) {
+    return gptWebModelValue(
+      DEFAULT_GPT_WEB_FAMILY,
+      DEFAULT_GPT_WEB_INTELLIGENCE,
+    );
+  }
 
-  const intelligence = GPT_WEB_INTELLIGENCE_LEVELS.find(
-    (level) => level.toLowerCase() === match[1]?.toLowerCase(),
+  const familySlot = match[1]?.trim().toLowerCase() ?? "";
+  const intelligenceSlot = match[2]?.trim().toLowerCase() ?? "";
+
+  // "catgpt-browser::High" — the pre-family encoding kept the level here.
+  const levelOnly = !match[2] ? INTELLIGENCE_ALIASES[familySlot] : undefined;
+  if (levelOnly) {
+    return gptWebModelValue(DEFAULT_GPT_WEB_FAMILY, levelOnly);
+  }
+
+  return gptWebModelValue(
+    FAMILY_ALIASES[familySlot] ?? DEFAULT_GPT_WEB_FAMILY,
+    INTELLIGENCE_ALIASES[intelligenceSlot] ?? DEFAULT_GPT_WEB_INTELLIGENCE,
   );
-  return intelligence
-    ? `catgpt-browser::${DEFAULT_GPT_WEB_FAMILY}|${intelligence}`
-    : value;
 }
 
 export function createGptWebModelEntries(): ModelEntry[] {
   return GPT_WEB_MODEL_FAMILIES.flatMap((family) =>
     GPT_WEB_INTELLIGENCE_LEVELS.map((intelligence) => ({
       name: `${family} · ${intelligence}`,
-      value: `catgpt-browser::${family}|${intelligence}`,
+      value: gptWebModelValue(family, intelligence),
       group: family,
-      groupDescription: FAMILY_STATUS[family] ?? "ChatGPT web",
+      groupDescription: "ChatGPT web",
       optionName: intelligence,
-      optionDescription: INTELLIGENCE_STATUS[intelligence],
+      optionDescription:
+        intelligence === DEFAULT_GPT_WEB_INTELLIGENCE ? "Default" : undefined,
     })),
   );
 }

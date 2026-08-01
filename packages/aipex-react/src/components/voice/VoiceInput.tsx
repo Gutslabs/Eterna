@@ -6,13 +6,11 @@
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "../../i18n/hooks";
-import { buildWebsiteUrl } from "../../lib/config/website.js";
 import { cn } from "../../lib/utils";
 import { isByokUserSimple } from "../../lib/voice/ai-config";
 import { AudioRecorder } from "../../lib/voice/audio-recorder";
 import { useChromeStorage } from "../../lib/voice/chrome-storage";
 import { transcribeAudioWithRetry } from "../../lib/voice/elevenlabs-stt";
-import { transcribeAudioWithServerRetry } from "../../lib/voice/server-stt";
 import { VADDetector } from "../../lib/voice/vad-detector";
 import { Button } from "../ui/button";
 import { ParticleSystem } from "./particle-system";
@@ -168,24 +166,14 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
 
             let result: { text?: string; error?: string };
 
-            // Determine which STT service to use
-            if (isByokUser === false) {
-              // Non-BYOK user: use server API
-              console.log("[VoiceInput] Using server STT (non-BYOK user)");
-              result = await transcribeAudioWithServerRetry(audioBlob);
-            } else if (isByokUser === true && elevenlabsApiKey) {
-              // BYOK user with ElevenLabs API: use ElevenLabs
-              console.log(
-                "[VoiceInput] Using ElevenLabs STT (BYOK user with API key)",
-              );
+            // ElevenLabs is the only STT backend — transcription never
+            // leaves for a hosted third-party service.
+            if (elevenlabsApiKey) {
               result = await transcribeAudioWithRetry(audioBlob, {
                 apiKey: elevenlabsApiKey,
                 modelId: elevenlabsModelId,
               });
             } else {
-              // BYOK user without ElevenLabs API: should use Web Speech API
-              // But current VoiceInput uses VAD, does not support Web Speech
-              // This case should be handled by intervention
               throw new Error(
                 "Please configure ElevenLabs API Key in settings or use browser speech recognition",
               );
@@ -266,16 +254,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
           error.message.includes("Permission denied") ||
           error.message.includes("permission"));
 
-      if (isPermissionDenied) {
-        console.log(
-          "[VoiceInput] Microphone permission denied, redirecting to guide...",
-        );
-        setIsPermissionError(true);
-        // Open voice guide page
-        window.open(buildWebsiteUrl("/voice/guide"), "_blank");
-      } else {
-        setIsPermissionError(false);
-      }
+      setIsPermissionError(isPermissionDenied);
 
       const errorMsg =
         error instanceof Error ? error.message : "Unable to access microphone";
@@ -285,7 +264,7 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
     } finally {
       isInitializingRef.current = false;
     }
-  }, [isByokUser, elevenlabsApiKey, elevenlabsModelId, t, isPaused]);
+  }, [elevenlabsApiKey, elevenlabsModelId, t, isPaused]);
 
   // Initialize on component mount
   useEffect(() => {
@@ -437,18 +416,10 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
 
           {/* Permission error prompt */}
           {status === "error" && isPermissionError && (
-            <div className="pointer-events-auto pt-2 space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-muted-foreground"
-                onClick={() => {
-                  window.open(buildWebsiteUrl("/voice/guide"), "_blank");
-                }}
-              >
-                View Guide
-              </Button>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Allow microphone access for this extension in the browser's site
+              settings, then try again.
+            </p>
           )}
 
           {/* API Key error prompt */}

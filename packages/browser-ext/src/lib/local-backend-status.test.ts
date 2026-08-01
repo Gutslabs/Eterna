@@ -20,6 +20,11 @@ describe("local backend status", () => {
       label: "gpt-web",
       healthUrl: "http://localhost:8000/healthz",
     });
+    expect(localBackendForModel("claude-browser::Opus 5|High")).toEqual({
+      key: "claude-web",
+      label: "claude-web",
+      healthUrl: "http://localhost:8001/healthz",
+    });
     expect(localBackendForModel("gemini-3-flash")?.key).toBe("cliproxy");
     expect(localBackendForModel("gpt-5.5")).toBeNull();
   });

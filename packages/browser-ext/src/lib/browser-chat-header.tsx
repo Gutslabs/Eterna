@@ -10,7 +10,7 @@ import {
 import { Button } from "@aipexstudio/aipex-react/components/ui/button";
 import { useTranslation } from "@aipexstudio/aipex-react/i18n/context";
 import { cn } from "@aipexstudio/aipex-react/lib/utils";
-import type { HeaderProps } from "@aipexstudio/aipex-react/types";
+import type { HeaderProps, UIMessage } from "@aipexstudio/aipex-react/types";
 import { conversationStorage } from "@aipexstudio/browser-runtime";
 import { ExternalLinkIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
@@ -25,6 +25,7 @@ import { HeaderMenu } from "./header-menu";
 import { ConversationHistoryPage } from "./history-page";
 import { fromStorageFormat, toStorageFormat } from "./message-adapter";
 import { getRemoteBrowserAgent } from "./remote-agent";
+import { prepareRunReplay } from "./run-replay";
 
 // The settings surface (provider forms, skill manager, file explorer) is heavy
 // and rarely opened — load it only when the user actually opens Settings.
@@ -50,6 +51,10 @@ function firstUserDomain(messages: readonly unknown[]): string | undefined {
   return undefined;
 }
 
+function lastUserMessageId(messages: readonly UIMessage[]): string | undefined {
+  return [...messages].reverse().find((message) => message.role === "user")?.id;
+}
+
 /** Quiet-period debounce before persisting the conversation. */
 const SAVE_DEBOUNCE_MS = 1000;
 /** Hard cap between saves while messages keep changing (active streaming). */
@@ -64,8 +69,16 @@ export function BrowserChatHeader({
   ...props
 }: HeaderProps) {
   const { t } = useTranslation();
-  const { messages, setMessages, interrupt, reset, attachExternalTurn } =
-    useChatContext();
+  const {
+    messages,
+    setMessages,
+    reset,
+    attachExternalTurn,
+    activeRunId,
+    getActiveRunId,
+    getMessagesSnapshot,
+    detachActiveRun,
+  } = useChatContext();
   const { settings } = useConfigContext();
 
   const [currentConversationId, setCurrentConversationId] = useState<
@@ -73,6 +86,8 @@ export function BrowserChatHeader({
   >();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const currentConversationIdRef = useRef(currentConversationId);
+  currentConversationIdRef.current = currentConversationId;
 
   const handleOpenHistory = useCallback(() => setHistoryOpen(true), []);
   const handleCloseHistory = useCallback(() => setHistoryOpen(false), []);
@@ -87,10 +102,29 @@ export function BrowserChatHeader({
   const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastSaveAtRef = useRef(0);
   const saveNowRef = useRef<(() => void) | undefined>(undefined);
+  const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const navigationEpochRef = useRef(0);
+  const visibleRunIdRef = useRef<string | null>(null);
+  const runConversationIdsRef = useRef(new Map<string, string>());
+  if (activeRunId) {
+    visibleRunIdRef.current = activeRunId;
+  }
   // Serialized form of the last persisted message list. Restoring a
   // conversation seeds this so merely viewing it never writes (a no-op
   // update would bump updatedAt and jump the chat to the top of history).
   const lastSavedSnapshotRef = useRef<string | null>(null);
+
+  const enqueuePersistence = useCallback(
+    (task: () => Promise<string | undefined>): Promise<string | undefined> => {
+      const operation = persistenceQueueRef.current.then(task, task);
+      persistenceQueueRef.current = operation.then(
+        () => undefined,
+        () => undefined,
+      );
+      return operation;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (saveTimeoutRef.current) {
@@ -105,31 +139,44 @@ export function BrowserChatHeader({
       const payload = toStorageFormat(messages);
       const snapshot = JSON.stringify(payload);
       if (snapshot === lastSavedSnapshotRef.current) return;
+      const epoch = navigationEpochRef.current;
+      const runId = activeRunId ?? visibleRunIdRef.current;
 
       try {
-        if (currentConversationId) {
-          // Update existing conversation
-          await conversationStorage.updateConversation(
-            currentConversationId,
-            payload,
-          );
+        const persistedConversationId = await enqueuePersistence(async () => {
+          let persistedConversationId: string | undefined;
+          if (currentConversationId) {
+            await conversationStorage.updateConversation(
+              currentConversationId,
+              payload,
+            );
+            persistedConversationId = currentConversationId;
+          } else if (nonSystemMessages.length >= 2) {
+            persistedConversationId =
+              (await conversationStorage.saveConversation(payload, {
+                domain: firstUserDomain(messages),
+              })) || undefined;
+          }
+          if (persistedConversationId && runId) {
+            runConversationIdsRef.current.set(runId, persistedConversationId);
+          }
+          return persistedConversationId;
+        });
+        if (!persistedConversationId) return;
+
+        getRemoteBrowserAgent().bindConversation(
+          persistedConversationId,
+          runId,
+          false,
+          lastUserMessageId(messages),
+        );
+        if (navigationEpochRef.current === epoch) {
           lastSavedSnapshotRef.current = snapshot;
-          getRemoteBrowserAgent().bindConversation(currentConversationId);
-        } else if (nonSystemMessages.length >= 2) {
-          // Create new conversation only when we have at least user message + assistant response
-          const conversationId = await conversationStorage.saveConversation(
-            payload,
-            { domain: firstUserDomain(messages) },
-          );
-          if (conversationId) {
-            setCurrentConversationId(conversationId);
-            lastSavedSnapshotRef.current = snapshot;
-            // Let the background run host know which stored conversation
-            // this run belongs to, so a reloaded sidebar can re-join it.
-            getRemoteBrowserAgent().bindConversation(conversationId);
+          if (!currentConversationId) {
+            setCurrentConversationId(persistedConversationId);
             console.log(
               "💾 New conversation created and saved:",
-              conversationId,
+              persistedConversationId,
             );
           }
         }
@@ -156,7 +203,7 @@ export function BrowserChatHeader({
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [messages, currentConversationId]);
+  }, [activeRunId, currentConversationId, enqueuePersistence, messages]);
 
   // Best-effort flush when the sidebar is torn down (host page refresh or
   // navigation) so an in-flight turn keeps its already-streamed text.
@@ -180,44 +227,59 @@ export function BrowserChatHeader({
     resumeAttemptedRef.current = true;
 
     void (async () => {
+      const resumeEpoch = navigationEpochRef.current;
       try {
         const attachment = await getRemoteBrowserAgent().attachActiveRun();
         if (!attachment) return;
+        if (
+          navigationEpochRef.current !== resumeEpoch ||
+          getActiveRunId() !== null
+        ) {
+          attachment.detach();
+          return;
+        }
         // A run the user already watched finish needs no resurrection; only
         // still-active runs or ones that completed while detached do.
         if (
           (attachment.done && !attachment.completedDetached) ||
           attachment.truncated
         ) {
-          await attachment.events.return?.(undefined);
+          attachment.detach();
           return;
         }
 
         let userText: string | undefined = attachment.userText;
+        let userMessageId = attachment.userMessageId ?? undefined;
         if (attachment.conversationId) {
           const conversation = await conversationStorage.getConversation(
             attachment.conversationId,
           );
+          if (
+            navigationEpochRef.current !== resumeEpoch ||
+            getActiveRunId() !== null
+          ) {
+            attachment.detach();
+            return;
+          }
           if (conversation) {
             setCurrentConversationId(attachment.conversationId);
             const restored = fromStorageFormat(conversation.messages);
-            // Drop the partially-saved assistant tail — the replay rebuilds
-            // the whole turn from its event log.
-            let end = restored.length;
-            while (end > 0 && restored[end - 1]?.role === "assistant") {
-              end -= 1;
-            }
-            setMessages(restored.slice(0, end));
-            userText = undefined;
+            const replay = prepareRunReplay(restored, attachment);
+            setMessages(replay.messages);
+            userText = replay.userText;
+            userMessageId = replay.userMessageId;
           }
         }
 
-        await attachExternalTurn(attachment.events, { userText });
+        await attachExternalTurn(attachment.events, {
+          userText,
+          userMessageId,
+        });
       } catch {
         // Background host unreachable — start as a normal fresh sidebar.
       }
     })();
-  }, [attachExternalTurn, setMessages]);
+  }, [attachExternalTurn, getActiveRunId, setMessages]);
 
   const handleOpenOptions = useCallback(() => {
     if (onSettingsClick) {
@@ -229,29 +291,118 @@ export function BrowserChatHeader({
     setSettingsOpen(true);
   }, [onSettingsClick]);
 
+  const persistDetachedSnapshot = useCallback(
+    async (
+      snapshotMessages: UIMessage[],
+      conversationId: string | undefined,
+      runId?: string,
+    ): Promise<void> => {
+      const nonSystemMessages = snapshotMessages.filter(
+        (message) => message.role !== "system",
+      );
+      const payload = toStorageFormat(snapshotMessages);
+      const persistedConversationId = await enqueuePersistence(async () => {
+        const knownConversationId =
+          conversationId ??
+          (runId ? runConversationIdsRef.current.get(runId) : undefined);
+        let persistedConversationId: string | undefined;
+        if (knownConversationId) {
+          if (nonSystemMessages.length > 0) {
+            await conversationStorage.updateConversation(
+              knownConversationId,
+              payload,
+            );
+          }
+          persistedConversationId = knownConversationId;
+        } else if (nonSystemMessages.length > 0) {
+          persistedConversationId =
+            (await conversationStorage.saveConversation(payload, {
+              domain: firstUserDomain(snapshotMessages),
+            })) || undefined;
+        }
+        if (persistedConversationId && runId) {
+          runConversationIdsRef.current.set(runId, persistedConversationId);
+        }
+        return persistedConversationId;
+      });
+
+      if (persistedConversationId && runId) {
+        getRemoteBrowserAgent().bindConversation(
+          persistedConversationId,
+          runId,
+          true,
+          lastUserMessageId(snapshotMessages),
+        );
+      }
+    },
+    [enqueuePersistence],
+  );
+
+  const detachCurrentRun = useCallback((): boolean => {
+    const runId = getActiveRunId();
+    if (!runId) {
+      return false;
+    }
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = undefined;
+    }
+
+    const conversationId = currentConversationIdRef.current;
+    const snapshotMessages = getMessagesSnapshot();
+    detachActiveRun({
+      conversationId,
+      persistencePending: true,
+      userMessageId: lastUserMessageId(snapshotMessages),
+    });
+    void persistDetachedSnapshot(snapshotMessages, conversationId, runId).catch(
+      (error) => {
+        console.error("❌ Failed to persist detached conversation:", error);
+        const knownConversationId =
+          conversationId ?? runConversationIdsRef.current.get(runId);
+        if (knownConversationId) {
+          getRemoteBrowserAgent().bindConversation(
+            knownConversationId,
+            runId,
+            true,
+            lastUserMessageId(snapshotMessages),
+          );
+        }
+      },
+    );
+    return true;
+  }, [
+    detachActiveRun,
+    getActiveRunId,
+    getMessagesSnapshot,
+    persistDetachedSnapshot,
+  ]);
+
   const handleConversationSelect = async (conversationId: string) => {
+    const navigationEpoch = ++navigationEpochRef.current;
     try {
       const conversation =
         await conversationStorage.getConversation(conversationId);
+      if (navigationEpochRef.current !== navigationEpoch) {
+        return;
+      }
       if (!conversation) {
         console.warn("⚠️ Conversation not found:", conversationId);
         return;
       }
 
-      // Interrupt any ongoing operation
-      if (interrupt) {
-        await interrupt();
+      const preservedRun = detachCurrentRun();
+      if (!preservedRun) {
+        void persistDetachedSnapshot(
+          getMessagesSnapshot(),
+          currentConversationIdRef.current,
+          visibleRunIdRef.current ?? undefined,
+        ).catch(() => {});
       }
-
-      // Drop the previous conversation's agent session AND gateway web
-      // thread. Without this the next message was sent into the OLD
-      // conversation's session/thread while its answer rendered under the
-      // restored one (cross-conversation context leakage). The gateway
-      // thread state lives host-side now, so reset it over RPC.
-      reset();
-      void getRemoteBrowserAgent()
-        .freshGatewayThread(settings.aiModel)
-        .catch(() => {});
+      visibleRunIdRef.current = null;
+      reset({ preserveActiveRun: preservedRun });
+      const remote = getRemoteBrowserAgent();
+      remote.activateGatewayConversation(conversationId);
 
       // Set the current conversation ID first
       setCurrentConversationId(conversationId);
@@ -262,6 +413,27 @@ export function BrowserChatHeader({
       const restored = fromStorageFormat(conversation.messages);
       lastSavedSnapshotRef.current = JSON.stringify(toStorageFormat(restored));
       setMessages(restored);
+
+      const attachment = await remote.attachActiveRun(conversationId);
+      if (navigationEpochRef.current !== navigationEpoch) {
+        attachment?.detach();
+        return;
+      }
+
+      const shouldReplay =
+        attachment &&
+        !attachment.truncated &&
+        (!attachment.done || attachment.completedDetached);
+      if (shouldReplay) {
+        const replay = prepareRunReplay(restored, attachment);
+        setMessages(replay.messages);
+        await attachExternalTurn(attachment.events, {
+          userText: replay.userText,
+          userMessageId: replay.userMessageId,
+        });
+      } else {
+        attachment?.detach();
+      }
 
       console.log(
         "✅ Conversation restored:",
@@ -274,18 +446,38 @@ export function BrowserChatHeader({
   };
 
   const handleNewChat = useCallback(() => {
+    const preservedRun = detachCurrentRun();
+    if (!preservedRun) {
+      void persistDetachedSnapshot(
+        getMessagesSnapshot(),
+        currentConversationIdRef.current,
+        visibleRunIdRef.current ?? undefined,
+      ).catch(() => {});
+    }
+    navigationEpochRef.current += 1;
+    visibleRunIdRef.current = null;
+
     // Clear current conversation ID so next save creates new conversation
     setCurrentConversationId(undefined);
+    lastSavedSnapshotRef.current = null;
 
-    // For gateway models, open a fresh web-UI thread right away (visible in
-    // noVNC) instead of waiting for the next message to do it.
+    // The next route gets a fresh identity. Avoid an eager remote reset: its
+    // fire-and-forget navigation can race the next send or disrupt old work.
     void getRemoteBrowserAgent()
-      .freshGatewayThread(settings.aiModel)
+      .freshGatewayThread(settings.aiModel, {
+        resetRemote: false,
+      })
       .catch(() => {});
 
     // Call the passed onNewChat (resets messages and clears input)
-    onNewChat?.();
-  }, [onNewChat, settings.aiModel]);
+    onNewChat?.({ preserveActiveRun: preservedRun });
+  }, [
+    detachCurrentRun,
+    getMessagesSnapshot,
+    onNewChat,
+    persistDetachedSnapshot,
+    settings.aiModel,
+  ]);
 
   // When rendered inside the in-page sidebar iframe, expose a close affordance
   // that asks the host content script to slide the panel away.
@@ -293,7 +485,7 @@ export function BrowserChatHeader({
     typeof window !== "undefined" && window.self !== window.top;
 
   const handleCloseSidebar = useCallback(() => {
-    window.parent.postMessage({ type: "aipex-close-sidebar" }, "*");
+    window.parent.postMessage({ type: "eterna-close-sidebar" }, "*");
   }, []);
 
   // Pop the chat out of the narrow sidebar into a full browser tab (the chat

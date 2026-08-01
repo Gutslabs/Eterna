@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <title>Eterna Private Orbit</title>
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="48" cy="50" r="27" stroke-width="6"/>
+    <path d="M28 50h38M30 36h29M30 64h29" stroke-width="5"/>
+    <path d="M77 33c6 6 9 13 9 21 0 9-4 17-11 23" stroke-width="4"/>
+    <circle cx="77" cy="33" r="6" fill="currentColor" stroke="none"/>
+  </g>
+</svg>

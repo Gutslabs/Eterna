@@ -1,7 +1,7 @@
 /**
  * SelectionAutoSend
  *
- * Consumes the `aipex-pending-autosend` payload written by the in-page
+ * Consumes the `eterna-pending-autosend` payload written by the in-page
  * "Ask Eterna" selection bar and submits it to the chat as soon as the agent
  * is ready. Renders nothing.
  *
@@ -15,8 +15,8 @@ import {
   useChatContext,
 } from "@aipexstudio/aipex-react/components/chatbot";
 import { useEffect, useRef, useState } from "react";
+import { PENDING_AUTOSEND_KEY } from "./pending-autosend";
 
-const PENDING_AUTOSEND_KEY = "aipex-pending-autosend";
 const MAX_AGE_MS = 15000;
 
 export function SelectionAutoSend() {

@@ -1,24 +1,24 @@
 ---
-name: aipex-browser
-description: AI-powered browser automation using the AIPex Chrome Extension via MCP bridge. Use this skill when the agent needs to control a Chrome browser — navigating pages, clicking elements, filling forms, capturing screenshots, managing tabs, or downloading content — by connecting to the AIPex MCP bridge.
-version: 1.0.0
+name: eterna-browser
+description: AI-powered browser automation using the Eterna Chrome Extension via MCP bridge. Use this skill when the agent needs to control a Chrome browser — navigating pages, clicking elements, filling forms, capturing screenshots, managing tabs, bookmarks and history, or downloading content — by connecting to the Eterna MCP bridge.
+version: 1.1.0
 metadata:
   openclaw:
     requires:
       bins:
         - npx
     emoji: "🌐"
-    homepage: https://aipex.ai
+    homepage: https://github.com/Gutslabs/Eterna
     os: [macos, linux, windows]
 ---
 
-# AIPex Browser Control
+# Eterna Browser Control
 
-AIPex is a Chrome extension that exposes 30+ browser automation tools over the Model Context Protocol (MCP). Once connected, the agent can control any Chrome tab using natural language — clicking, typing, navigating, capturing screenshots, downloading content, and more.
+Eterna is a Chrome extension that exposes 56 browser automation tools over the Model Context Protocol (MCP). Once connected, the agent can control any Chrome tab using natural language — clicking, typing, navigating, capturing screenshots, organizing tabs, searching history and bookmarks, downloading content, and more.
 
 **Architecture:**
 ```
-Agent (MCP client) ──stdio──▶ aipex-mcp-bridge ──WebSocket──▶ AIPex Chrome Extension ──▶ Browser APIs
+Agent (MCP client) ──stdio──▶ eterna-mcp-bridge ──WebSocket──▶ Eterna Chrome Extension ──▶ Browser APIs
 ```
 
 ---
@@ -29,34 +29,35 @@ Use this skill when the user wants to:
 
 - Navigate to URLs, click links, fill forms, or interact with any web page
 - Automate multi-step browser workflows
-- Extract or download data from web pages
+- Extract, read, or download data from web pages
 - Capture screenshots of browser tabs
-- Manage multiple tabs across browser windows
+- Manage tabs, tab groups, bookmarks, and recently closed sessions
+- Search browsing history
 - Perform browser-assisted testing (accessibility, UX, regression)
 
 ---
 
 ## Prerequisites
 
-- **AIPex Chrome extension** installed (available on the Chrome Web Store or via developer build)
+- **Eterna Chrome extension** installed (available on the Chrome Web Store or via developer build)
 - **Node.js >= 18** installed on the local machine
 
-The user is assumed to have AIPex installed. The agent only needs to complete the two connection steps below.
+The user is assumed to have Eterna installed. The agent only needs to complete the two connection steps below.
 
 ---
 
 ## Step 1: Register the MCP Server
 
-Add the following to the agent's MCP configuration. No manual installation is needed — `npx` downloads and runs `aipex-mcp-bridge` automatically.
+Add the following to the agent's MCP configuration. No manual installation is needed — `npx` downloads and runs `eterna-mcp-bridge` automatically.
 
 ### Cursor (`.cursor/mcp.json`)
 
 ```json
 {
   "mcpServers": {
-    "aipex-browser": {
+    "eterna-browser": {
       "command": "npx",
-      "args": ["-y", "aipex-mcp-bridge"]
+      "args": ["-y", "eterna-mcp-bridge"]
     }
   }
 }
@@ -67,9 +68,9 @@ Add the following to the agent's MCP configuration. No manual installation is ne
 ```json
 {
   "mcpServers": {
-    "aipex-browser": {
+    "eterna-browser": {
       "command": "npx",
-      "args": ["-y", "aipex-mcp-bridge"]
+      "args": ["-y", "eterna-mcp-bridge"]
     }
   }
 }
@@ -78,7 +79,7 @@ Add the following to the agent's MCP configuration. No manual installation is ne
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
+claude mcp add eterna-browser -- npx -y eterna-mcp-bridge
 ```
 
 ### VS Code Copilot (`.vscode/mcp.json`)
@@ -86,9 +87,9 @@ claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
 ```json
 {
   "servers": {
-    "aipex-browser": {
+    "eterna-browser": {
       "command": "npx",
-      "args": ["-y", "aipex-mcp-bridge"]
+      "args": ["-y", "eterna-mcp-bridge"]
     }
   }
 }
@@ -99,9 +100,9 @@ claude mcp add aipex-browser -- npx -y aipex-mcp-bridge
 ```json
 {
   "mcpServers": {
-    "aipex-browser": {
+    "eterna-browser": {
       "command": "npx",
-      "args": ["-y", "aipex-mcp-bridge"]
+      "args": ["-y", "eterna-mcp-bridge"]
     }
   }
 }
@@ -114,9 +115,9 @@ The bridge listens on `localhost:9223` by default. To use a different port:
 ```json
 {
   "mcpServers": {
-    "aipex-browser": {
+    "eterna-browser": {
       "command": "npx",
-      "args": ["-y", "aipex-mcp-bridge", "--port", "9224"]
+      "args": ["-y", "eterna-mcp-bridge", "--port", "9224"]
     }
   }
 }
@@ -126,11 +127,11 @@ Then use `ws://localhost:9224` in Step 2.
 
 ---
 
-## Step 2: Connect the AIPex Extension to the Bridge
+## Step 2: Connect the Eterna Extension to the Bridge
 
 After the MCP server is registered and running:
 
-1. Open Chrome and click the **AIPex** extension icon
+1. Open Chrome and click the **Eterna** extension icon
 2. Go to **Options** (or right-click the icon → "Extension options")
 3. Find the **WebSocket Connection** section
 4. Enter: `ws://localhost:9223`
@@ -138,7 +139,7 @@ After the MCP server is registered and running:
 
 The bridge and extension will handshake, and all browser tools will become available to the agent.
 
-**Verifying the connection:** If only a single tool called `check_aipex_connection` is visible, the extension has not yet connected. Follow Step 2 again, then reload the MCP server in agent settings.
+**Verifying the connection:** All 56 tools are always listed, but calls fail with "Eterna extension is not connected" until the extension has connected. If you see that error, follow Step 2 again — no MCP server restart is needed.
 
 ---
 
@@ -169,6 +170,16 @@ Use only when `search_elements` fails after two different query attempts, or whe
 1. `capture_screenshot(sendToLLM=true)` — see the page
 2. `computer(action, coordinate)` — click/type at pixel coordinates
 
+### Reading pages — prefer reader tools over screenshots
+
+To read or extract content, do NOT screenshot. Use:
+
+- `read_page()` — current tab's main content as Markdown
+- `read_url(url)` — fetch and read a link without opening a tab
+- `extract_structured_data(fields)` — pull named fields (price, author, date…)
+- `web_search(query)` — background web search, no tab changes
+- `get_youtube_transcript()` — captions of the YouTube video in the current tab
+
 ### Standard Workflow
 
 ```
@@ -184,28 +195,38 @@ get_all_tabs()
 
 | Category | Tools | Description |
 |---|---|---|
-| Tab Management | 8 tools | Open, close, switch, pin, group tabs |
-| UI Interaction | 7 tools | Click, fill, hover, keyboard, coordinate-based |
-| Page Content | 4 tools | Metadata, scroll, highlight elements/text |
-| Screenshots | 2 tools | Capture visible tab or specific tab |
-| Downloads | 3 tools | Save text as markdown, download images |
-| Human Intervention | 4 tools | Request user input mid-automation |
+| Tab Management | 7 | Open, close, switch, inspect, ungroup tabs |
+| Tab Groups | 4 | Create, update, list, dissolve tab groups |
+| Recently Closed | 2 | List and restore recently closed tabs/windows |
+| Bookmarks | 6 | List, search, create, update, delete bookmarks and folders |
+| History | 3 | Recent history, search, most-visited (read-only) |
+| UI Interaction | 8 | Click, fill, hover, upload, keyboard, coordinate-based |
+| Page Content & Web | 9 | Read page/URL as Markdown, extract fields, web search, YouTube transcript, metadata, scroll, highlight |
+| Memory | 2 | Remember/forget durable user facts |
+| Screenshots | 3 | Capture visible tab, specific tab, or element with highlight |
+| Downloads | 2 | Download images from page or chat |
+| Human Intervention | 4 | Request user input mid-automation |
+| Skills | 6 | Discover and run installed Eterna skills |
 
 **Key tools by category:**
 
 | Category | Key Tools |
 |---|---|
 | Tab | `get_all_tabs`, `switch_to_tab`, `create_new_tab`, `close_tab` |
+| Tab Groups | `get_all_tab_groups`, `create_tab_group`, `update_tab_group` |
+| Sessions | `get_recently_closed`, `restore_session` |
+| Bookmarks | `search_bookmarks`, `create_bookmark`, `list_bookmarks` |
+| History | `search_history`, `get_recent_history`, `get_most_visited_sites` |
 | UI | `search_elements`, `click`, `fill_element_by_uid`, `computer` |
-| Page | `get_page_metadata`, `scroll_to_element`, `highlight_element` |
+| Page & Web | `read_page`, `read_url`, `extract_structured_data`, `web_search` |
 | Screenshot | `capture_screenshot`, `capture_tab_screenshot` |
-| Download | `download_text_as_markdown`, `download_image` |
+| Download | `download_image`, `download_chat_images` |
 | Intervention | `request_intervention`, `list_interventions` |
 
-To load complete parameter schemas and examples for every tool:
+To load complete parameter schemas for every tool:
 
 ```
-read_skill_reference("aipex-browser", "references/tools-reference.md")
+read_skill_reference("eterna-browser", "references/tools-reference.md")
 ```
 
 ---
@@ -231,11 +252,27 @@ get_all_tabs()
 → click(tabId, uid)
 ```
 
-### Extract page content to markdown
+### Read or extract page content
 
 ```
-get_page_metadata()
-→ download_text_as_markdown(content, "page-extract")
+read_page()                                     — current tab as Markdown
+read_url("https://example.com/article")         — a link, without opening a tab
+extract_structured_data([{name: "price"}, ...]) — specific fields
+```
+
+### Organize a messy tab session
+
+```
+get_all_tabs()
+→ create_tab_group([tabId1, tabId2], "Research", "blue")
+→ create_tab_group([tabId3, tabId4], "Shopping", "green")
+```
+
+### Reopen something the user closed
+
+```
+get_recently_closed()
+→ restore_session(sessionId)
 ```
 
 ### Visual verification
@@ -250,8 +287,8 @@ capture_screenshot(sendToLLM=true)
 
 | Symptom | Likely Cause | Fix |
 |---|---|---|
-| Only `check_aipex_connection` visible | Extension not connected to bridge | Open AIPex Options → set WebSocket URL → Connect |
+| Calls fail with "Eterna extension is not connected" | Extension not connected to bridge | Open Eterna Options → set WebSocket URL → Connect |
 | Port 9223 already in use | Port conflict on machine | Use `--port 9224` in MCP config and `ws://localhost:9224` in extension |
 | `search_elements` returns 0 results | Page uses canvas or non-semantic HTML | Fall back to `capture_screenshot(sendToLLM=true)` + `computer` tool |
-| Connection drops frequently | Service worker sleep cycle | AIPex uses keepalive pings; reconnect extension from Options if needed |
+| Connection drops frequently | Service worker sleep cycle | Eterna uses keepalive pings; reconnect extension from Options if needed |
 | Tools appear but calls time out | Bridge not receiving WebSocket messages | Restart bridge: reload MCP server in agent settings |

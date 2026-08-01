@@ -18,7 +18,6 @@ import {
   Info,
   Mail,
   MessageCircle,
-  MessageSquare,
   Mic,
   Package,
   Palette,
@@ -33,7 +32,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n/context";
-import { buildWebsiteUrl } from "../../lib/config/website.js";
 import { cn } from "../../lib/utils";
 import { useTheme } from "../../theme/context";
 import { DEFAULT_MODELS } from "../chatbot/constants";
@@ -1177,22 +1175,6 @@ export function SettingsPage({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button asChild size="icon" variant="outline">
-                      <a
-                        href={buildWebsiteUrl("/contact")}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                      </a>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{t("settings.joinWechat")}</p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button asChild size="icon" variant="outline">
                       <a href="mailto:aipexassistant@gmail.com">
                         <Mail className="h-4 w-4" />
                       </a>
@@ -1216,22 +1198,6 @@ export function SettingsPage({
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>{t("settings.followTwitter")}</p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button asChild size="icon" variant="outline">
-                      <a
-                        href={buildWebsiteUrl("/feedback")}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                      </a>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{t("settings.feedback")}</p>
                   </TooltipContent>
                 </Tooltip>
               </CardContent>

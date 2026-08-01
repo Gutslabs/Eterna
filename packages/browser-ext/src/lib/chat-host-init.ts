@@ -13,11 +13,13 @@ import { AIPex, ContextManager, SessionStorage } from "@aipexstudio/aipex-core";
 import {
   allBrowserProviders,
   captureViewportForAmbient,
+  conversationStorage,
   IndexedDBStorage,
   loadMemories,
   renderMemoriesForPrompt,
 } from "@aipexstudio/browser-runtime";
 import {
+  isCatGptGatewayModel,
   startFreshGatewayThread,
   supportsParallelSubagents,
 } from "./ai-provider";
@@ -33,19 +35,23 @@ import {
 import {
   type ChatHost,
   type ChatHostAgent,
+  type ChatHostAgentContext,
   type ChatPortLike,
   createChatHost,
 } from "./chat-host";
 import { CHAT_PORT_NAME } from "./chat-port-protocol";
+import { createSerializedDetachedRunPersistence } from "./detached-run-persistence";
 import { ORCHESTRATOR_GUIDANCE } from "./research-agents";
 import { createRunSubagentTool } from "./run-subagent";
 
 const KEEPALIVE_INTERVAL_MS = 20_000;
 
 export function initBackgroundChatHost(): ChatHost {
-  let cached: { key: string; agent: ChatHostAgent } | null = null;
+  const cachedAgents = new Map<string, { key: string; agent: ChatHostAgent }>();
 
-  const createAgent = async (): Promise<ChatHostAgent> => {
+  const createAgent = async (
+    context?: ChatHostAgentContext,
+  ): Promise<ChatHostAgent> => {
     const [settings, mode, parallelEnabled, memories] = await Promise.all([
       loadAppSettings(),
       loadAutomationMode(),
@@ -53,7 +59,12 @@ export function initBackgroundChatHost(): ChatHost {
       loadMemories(),
     ]);
     const key = JSON.stringify({ settings, mode, parallelEnabled, memories });
-    if (cached && cached.key === key) {
+    const gatewayRouteId = isCatGptGatewayModel(settings.aiModel)
+      ? context?.routeId
+      : undefined;
+    const cacheSlot = gatewayRouteId ?? "shared";
+    const cached = cachedAgents.get(cacheSlot);
+    if (cached?.key === key) {
       return cached.agent;
     }
 
@@ -77,7 +88,7 @@ export function initBackgroundChatHost(): ChatHost {
     const agent = AIPex.create({
       name: BROWSER_AGENT_CONFIG.name,
       instructions,
-      model: createBrowserModel(settings),
+      model: createBrowserModel(settings, gatewayRouteId),
       tools: orchestratorTools,
       storage: new SessionStorage(
         new IndexedDBStorage({
@@ -96,8 +107,19 @@ export function initBackgroundChatHost(): ChatHost {
         ...BROWSER_AGENT_CONFIG.compression,
       },
     });
-    cached = { key, agent: agent as unknown as ChatHostAgent };
-    return cached.agent;
+    const cachedAgent = {
+      key,
+      agent: agent as unknown as ChatHostAgent,
+    };
+    cachedAgents.delete(cacheSlot);
+    cachedAgents.set(cacheSlot, cachedAgent);
+    if (cachedAgents.size > 100) {
+      const oldestSlot = cachedAgents.keys().next().value;
+      if (oldestSlot !== undefined) {
+        cachedAgents.delete(oldestSlot);
+      }
+    }
+    return cachedAgent.agent;
   };
 
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
@@ -111,6 +133,8 @@ export function initBackgroundChatHost(): ChatHost {
       keepaliveTimer = null;
     }
   };
+  const persistCompletedRun =
+    createSerializedDetachedRunPersistence(conversationStorage);
 
   const host = createChatHost({
     createAgent,
@@ -121,6 +145,7 @@ export function initBackgroundChatHost(): ChatHost {
         : null,
     freshGatewayThread: startFreshGatewayThread,
     onActiveChange,
+    onRunComplete: persistCompletedRun,
   });
 
   chrome.runtime.onConnect.addListener((port) => {

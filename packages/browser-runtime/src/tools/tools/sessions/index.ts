@@ -1,51 +1,53 @@
 import { tool } from "@aipexstudio/aipex-core";
 import { z } from "zod";
 
-interface SessionTab {
-  id: number;
-  windowId: number;
-  title: string;
-  url: string;
-}
-
-interface SessionData {
+interface ClosedSessionEntry {
   sessionId: string;
-  tab: SessionTab | null;
+  type: "tab" | "window";
+  title?: string;
+  url?: string;
+  tabCount?: number;
   lastModified: number;
 }
 
-interface DeviceInfo {
-  id: string;
-  name: string;
-  type: string;
-  os: string;
+function toEntry(session: chrome.sessions.Session): ClosedSessionEntry | null {
+  if (session.tab?.sessionId) {
+    return {
+      sessionId: session.tab.sessionId,
+      type: "tab",
+      title: session.tab.title ?? "",
+      url: session.tab.url ?? "",
+      lastModified: session.lastModified ?? 0,
+    };
+  }
+  if (session.window?.sessionId) {
+    const tabs = session.window.tabs ?? [];
+    return {
+      sessionId: session.window.sessionId,
+      type: "window",
+      title: tabs[0]?.title ?? "",
+      tabCount: tabs.length,
+      lastModified: session.lastModified ?? 0,
+    };
+  }
+  return null;
 }
 
-/**
- * Get all sessions
- */
-export async function getAllSessions(): Promise<{
+export async function getRecentlyClosedSessions(maxResults?: number): Promise<{
   success: boolean;
-  sessions?: SessionData[];
+  sessions?: ClosedSessionEntry[];
   error?: string;
 }> {
   try {
-    const sessions = await chrome.sessions.getRecentlyClosed();
-
-    const sessionData = sessions.map((session, index) => ({
-      sessionId: `session_${index}`,
-      tab: session.tab
-        ? {
-            id: session.tab.id || 0,
-            windowId: session.tab.windowId || 0,
-            title: session.tab.title || "",
-            url: session.tab.url || "",
-          }
-        : null,
-      lastModified: session.lastModified || 0,
-    }));
-
-    return { success: true, sessions: sessionData };
+    const sessions = await chrome.sessions.getRecentlyClosed(
+      maxResults ? { maxResults } : undefined,
+    );
+    return {
+      success: true,
+      sessions: sessions
+        .map(toEntry)
+        .filter((entry): entry is ClosedSessionEntry => entry !== null),
+    };
   } catch (error: unknown) {
     return {
       success: false,
@@ -54,122 +56,31 @@ export async function getAllSessions(): Promise<{
   }
 }
 
-/**
- * Get session by ID
- */
-export async function getSession(sessionId: string): Promise<{
+export async function restoreSession(sessionId?: string): Promise<{
   success: boolean;
-  session?: SessionData;
+  restored?: { type: "tab" | "window"; title?: string; tabCount?: number };
   error?: string;
 }> {
   try {
     const session = await chrome.sessions.restore(sessionId);
-
-    return {
-      success: true,
-      session: {
-        sessionId: sessionId,
-        tab: session.tab
-          ? {
-              id: session.tab.id || 0,
-              windowId: session.tab.windowId || 0,
-              title: session.tab.title || "",
-              url: session.tab.url || "",
-            }
-          : null,
-        lastModified: session.lastModified || 0,
-      },
-    };
-  } catch (error: unknown) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-/**
- * Restore session
- */
-export async function restoreSession(sessionId: string): Promise<{
-  success: boolean;
-  session?: {
-    sessionId: string;
-    tab: SessionTab | null;
-  };
-  error?: string;
-}> {
-  try {
-    const session = await chrome.sessions.restore(sessionId);
-
-    return {
-      success: true,
-      session: {
-        sessionId: sessionId,
-        tab: session.tab
-          ? {
-              id: session.tab.id || 0,
-              windowId: session.tab.windowId || 0,
-              title: session.tab.title || "",
-              url: session.tab.url || "",
-            }
-          : null,
-      },
-    };
-  } catch (error: unknown) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-/**
- * Get current device
- */
-export async function getCurrentDevice(): Promise<{
-  success: boolean;
-  device?: DeviceInfo;
-  error?: string;
-}> {
-  try {
-    return {
-      success: true,
-      device: {
-        id: "current_device",
-        name: "Current Device",
-        type: "desktop",
-        os: "unknown",
-      },
-    };
-  } catch (error: unknown) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-/**
- * Get all devices
- */
-export async function getAllDevices(): Promise<{
-  success: boolean;
-  devices?: DeviceInfo[];
-  error?: string;
-}> {
-  try {
-    return {
-      success: true,
-      devices: [
-        {
-          id: "current_device",
-          name: "Current Device",
-          type: "desktop",
-          os: "unknown",
+    if (session.tab) {
+      return {
+        success: true,
+        restored: { type: "tab", title: session.tab.title ?? "" },
+      };
+    }
+    if (session.window) {
+      const tabs = session.window.tabs ?? [];
+      return {
+        success: true,
+        restored: {
+          type: "window",
+          title: tabs[0]?.title ?? "",
+          tabCount: tabs.length,
         },
-      ],
-    };
+      };
+    }
+    return { success: true };
   } catch (error: unknown) {
     return {
       success: false,
@@ -178,51 +89,39 @@ export async function getAllDevices(): Promise<{
   }
 }
 
-export const getAllSessionsTool = tool({
-  name: "get_all_sessions",
-  description: "Get all recently closed sessions",
-  parameters: z.object({}),
-  execute: async () => {
-    return await getAllSessions();
-  },
-});
-
-export const getSessionTool = tool({
-  name: "get_session",
-  description: "Get session by ID",
+export const getRecentlyClosedSessionsTool = tool({
+  name: "get_recently_closed",
+  description:
+    "List recently closed tabs and windows with their session IDs, so a specific one can be restored with restore_session.",
   parameters: z.object({
-    sessionId: z.string().describe("Session ID"),
+    maxResults: z
+      .number()
+      .int()
+      .min(1)
+      .max(25)
+      .nullable()
+      .optional()
+      .describe("Maximum number of entries to return (default: all, max 25)"),
   }),
-  execute: async ({ sessionId }) => {
-    return await getSession(sessionId);
+  execute: async ({ maxResults }) => {
+    return await getRecentlyClosedSessions(maxResults ?? undefined);
   },
 });
 
 export const restoreSessionTool = tool({
   name: "restore_session",
-  description: "Restore a previously closed session",
+  description:
+    "Reopen a recently closed tab or window. Pass a session ID from get_recently_closed, or omit it to restore the most recently closed entry.",
   parameters: z.object({
-    sessionId: z.string().describe("Session ID to restore"),
+    sessionId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Session ID from get_recently_closed. Omit to restore the most recently closed tab/window.",
+      ),
   }),
   execute: async ({ sessionId }) => {
-    return await restoreSession(sessionId);
-  },
-});
-
-export const getCurrentDeviceTool = tool({
-  name: "get_current_device",
-  description: "Get current device information",
-  parameters: z.object({}),
-  execute: async () => {
-    return await getCurrentDevice();
-  },
-});
-
-export const getAllDevicesTool = tool({
-  name: "get_all_devices",
-  description: "Get all synced devices",
-  parameters: z.object({}),
-  execute: async () => {
-    return await getAllDevices();
+    return await restoreSession(sessionId ?? undefined);
   },
 });

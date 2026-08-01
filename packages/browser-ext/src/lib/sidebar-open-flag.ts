@@ -8,7 +8,7 @@
  * is opened independently, on demand.
  */
 
-const OPEN_FLAG_KEY = "__aipex_sidebar_open";
+const OPEN_FLAG_KEY = "__eterna_sidebar_open";
 
 export function readSidebarOpen(): boolean {
   try {

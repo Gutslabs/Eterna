@@ -147,9 +147,18 @@ export const SkillList: React.FC<SkillListProps> = ({
     setDetailsOpen(true);
   };
 
-  const handleExport = (skill: SkillMetadata) => {
-    // TODO: Implement skill export functionality
-    console.log("Export skill:", skill.name);
+  const handleExport = async (skill: SkillMetadata) => {
+    try {
+      const { filename, blob } = await skillClient.exportSkill(skill.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export skill");
+    }
   };
 
   const getStats = () => {

@@ -1,13 +1,13 @@
 {
-  "name": "@aipexstudio/root",
-  "displayName": "AIPex",
+  "name": "@eterna/root",
+  "displayName": "Eterna",
   "version": "0.1.0",
   "private": true,
-  "description": "Automate your browser with natural language commands - The open source browser-use solution",
-  "author": "AIPex Studio",
+  "description": "An open-source browser automation agent that lives in your existing browser",
+  "author": "Gutslabs",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AIPexStudio/AIPex.git"
+    "url": "git+https://github.com/Gutslabs/Eterna.git"
   },
   "scripts": {
     "postinstall": "prek install",

@@ -11,7 +11,7 @@
  * pin up to 3 to the bar, delete, or create a new one.
  *
  * It renders outside the PromptInput provider, so it hands the chosen prompt off
- * via chrome.storage (`aipex-pending-context`), which BrowserContextLoader turns
+ * via chrome.storage (`eterna-pending-context`), which BrowserContextLoader turns
  * into a chip. Prompts persist locally.
  */
 
@@ -35,7 +35,7 @@ import { BookmarkIcon, PinIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 const STORAGE_KEY = "aipex-saved-prompts";
-const PENDING_CONTEXT_KEY = "aipex-pending-context";
+const PENDING_CONTEXT_KEY = "eterna-pending-context";
 const MAX_PILLS = 3;
 
 const PILL_CLASS =

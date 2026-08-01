@@ -80,6 +80,7 @@ export class ChatAdapter {
     text: string,
     files?: MessageAttachment[],
     contexts?: ContextItem[],
+    messageId?: string,
   ): UIMessage {
     // A new user turn always starts a fresh assistant message. Without this,
     // a run that ended without execution_complete (interrupt, dropped stream)
@@ -139,7 +140,7 @@ export class ChatAdapter {
     }
 
     const userMessage: UIMessage = {
-      id: generateId(),
+      id: messageId ?? generateId(),
       role: "user",
       parts,
       timestamp: Date.now(),

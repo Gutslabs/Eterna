@@ -10,6 +10,10 @@
 
 import type { CollectorOptions } from "@aipexstudio/dom-snapshot";
 import {
+  bindOpenEternaShortcut,
+  requestToggleEternaSidePanel,
+} from "../../lib/open-eterna-shortcut";
+import {
   serializePageForExtraction,
   serializeSafeElementAttributes,
   serializeSafeElementText,
@@ -83,7 +87,7 @@ function generateCssSelector(element: Element): string {
 
     if (current.classList.length > 0) {
       const classes = Array.from(current.classList)
-        .filter((c) => !c.startsWith("plasmo-") && !c.startsWith("aipex-"))
+        .filter((c) => !c.startsWith("plasmo-") && !c.startsWith("eterna-"))
         .slice(0, 2)
         .join(".");
       if (classes) {
@@ -111,7 +115,9 @@ function stopCapture() {
   captureState.isCapturing = false;
 
   if (captureState.highlightedElement) {
-    captureState.highlightedElement.classList.remove("aipex-capture-highlight");
+    captureState.highlightedElement.classList.remove(
+      "eterna-capture-highlight",
+    );
     captureState.highlightedElement = null;
   }
 
@@ -135,11 +141,11 @@ function startCapture() {
 
     if (captureState.highlightedElement) {
       captureState.highlightedElement.classList.remove(
-        "aipex-capture-highlight",
+        "eterna-capture-highlight",
       );
     }
 
-    target.classList.add("aipex-capture-highlight");
+    target.classList.add("eterna-capture-highlight");
     captureState.highlightedElement = target;
   };
 
@@ -161,7 +167,7 @@ function startCapture() {
       selector,
       id: target.id || undefined,
       classes: Array.from(target.classList).filter(
-        (c) => !c.startsWith("aipex-") && !c.startsWith("plasmo-"),
+        (c) => !c.startsWith("eterna-") && !c.startsWith("plasmo-"),
       ),
       textContent: serializeSafeElementText(target),
       attributes: serializeSafeElementAttributes(target),
@@ -193,11 +199,11 @@ function startCapture() {
     document.removeEventListener("click", handleClick, true);
   };
 
-  if (!document.getElementById("aipex-capture-styles")) {
+  if (!document.getElementById("eterna-capture-styles")) {
     const style = document.createElement("style");
-    style.id = "aipex-capture-styles";
+    style.id = "eterna-capture-styles";
     style.textContent = `
-      .aipex-capture-highlight {
+      .eterna-capture-highlight {
         outline: 2px solid #3b82f6 !important;
         outline-offset: 2px !important;
         cursor: crosshair !important;
@@ -360,15 +366,15 @@ function handleMessage(
   }
 
   if (
-    message?.request === "toggle-aipex-sidebar" ||
-    message?.request === "open-aipex-sidebar" ||
-    message?.request === "close-aipex-sidebar"
+    message?.request === "toggle-eterna-sidebar" ||
+    message?.request === "open-eterna-sidebar" ||
+    message?.request === "close-eterna-sidebar"
   ) {
     if (!isTopFrame) return false;
     const command =
-      message.request === "toggle-aipex-sidebar"
+      message.request === "toggle-eterna-sidebar"
         ? "toggle"
-        : message.request === "open-aipex-sidebar"
+        : message.request === "open-eterna-sidebar"
           ? "open"
           : "close";
     // Closing a sidebar that was never loaded is a no-op — don't pull in the
@@ -454,6 +460,32 @@ function unbindSelectionTriggers() {
   document.removeEventListener("selectionchange", onSelectionEvent);
   document.removeEventListener("select", onSelectionEvent, true);
 }
+
+bindOpenEternaShortcut(
+  window,
+  () => {
+    try {
+      requestToggleEternaSidePanel(chrome.runtime)
+        .then((response) => {
+          const result = response as
+            | { success?: boolean; error?: string }
+            | undefined;
+          if (result?.success === false) {
+            console.error(
+              "[Eterna] Cmd+E could not toggle the side panel:",
+              result.error,
+            );
+          }
+        })
+        .catch((error) => {
+          console.error("[Eterna] Cmd+E request failed:", error);
+        });
+    } catch (error) {
+      console.error("[Eterna] Cmd+E request failed:", error);
+    }
+  },
+  () => Boolean(chrome.runtime?.id),
+);
 
 if (isTopFrame) {
   bindSelectionTriggers();

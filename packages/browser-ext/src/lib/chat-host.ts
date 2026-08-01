@@ -35,17 +35,29 @@ export interface ChatHostAgent {
     | undefined;
 }
 
+export interface ChatHostAgentContext {
+  clientId: string;
+  runId?: string;
+  sessionId?: string;
+  routeId?: string;
+}
+
 export interface ChatHostDeps {
-  createAgent(): Promise<ChatHostAgent>;
+  createAgent(context?: ChatHostAgentContext): Promise<ChatHostAgent>;
   /**
    * Capture the user's current viewport as a data URL (or null when disabled or
    * not possible). Injected so this chrome-free host stays testable; powers the
    * "auto-attach a screenshot to every message" feature.
    */
   captureViewport?(): Promise<string | null>;
-  freshGatewayThread?(model: string | undefined): void;
+  freshGatewayThread?(
+    model: string | undefined,
+    options?: { resetRemote?: boolean },
+  ): void;
   /** Toggled when a run starts/finishes — drives the SW keepalive. */
   onActiveChange?(active: boolean): void;
+  /** Persist a completed run that no UI is currently rendering. */
+  onRunComplete?(run: RunSnapshot): void | Promise<void>;
   /** How long a finished run stays attachable. Default 10 minutes. */
   retentionMs?: number;
   /** Replay buffer cap; overflowing marks the run truncated. Default 5000. */
@@ -55,13 +67,20 @@ export interface ChatHostDeps {
 interface RunState {
   clientId: string;
   runId: string;
+  routeId: string;
+  sequence: number;
   userText: string;
+  userMessageId: string | null;
   conversationId: string | null;
   sessionId: string | null;
   events: WireAgentEvent[];
   truncated: boolean;
   done: boolean;
   interrupted: boolean;
+  detached: boolean;
+  attachedConsumerId: string | null;
+  persistencePending: boolean;
+  persistedConversationId: string | null;
   completedDetached: boolean;
   error: string | null;
   generator: AsyncGenerator<AgentEvent> | null;
@@ -75,6 +94,8 @@ export interface ChatHost {
   handlePort(port: ChatPortLike): void;
   /** Test/debug introspection. */
   getCurrentRun(): RunSnapshot | null;
+  /** Test/debug introspection for a specific retained run. */
+  getRun(runId: string, clientId?: string): RunSnapshot | null;
 }
 
 export function createChatHost(deps: ChatHostDeps): ChatHost {
@@ -82,10 +103,48 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
   const maxBufferedEvents =
     deps.maxBufferedEvents ?? DEFAULT_MAX_BUFFERED_EVENTS;
 
-  let currentRun: RunState | null = null;
-  let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
+  const runs = new Map<string, RunState>();
+  const cleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const sessionRouteIds = new Map<string, string>();
   const ports = new Set<ChatPortLike>();
   const portClients = new Map<ChatPortLike, string>();
+  let nextSequence = 0;
+  let activeRunCount = 0;
+  let persistenceTaskCount = 0;
+  let activeSignal = false;
+
+  const syncActiveSignal = (): void => {
+    const active = activeRunCount + persistenceTaskCount > 0;
+    if (active !== activeSignal) {
+      activeSignal = active;
+      deps.onActiveChange?.(active);
+    }
+  };
+
+  const runKey = (clientId: string, runId: string): string =>
+    `${clientId}\0${runId}`;
+  const sessionKey = (clientId: string, sessionId: string): string =>
+    `${clientId}\0${sessionId}`;
+
+  const retainedRun = (clientId: string, runId: string): RunState | undefined =>
+    runs.get(runKey(clientId, runId));
+
+  const latestRun = (
+    predicate: (run: RunState) => boolean,
+  ): RunState | null => {
+    let latest: RunState | null = null;
+    for (const run of runs.values()) {
+      if (predicate(run) && (!latest || run.sequence > latest.sequence)) {
+        latest = run;
+      }
+    }
+    return latest;
+  };
+
+  const isRunnable = (run: RunState): boolean =>
+    runs.get(runKey(run.clientId, run.runId)) === run &&
+    !run.done &&
+    !run.interrupted;
 
   const broadcast = (run: RunState, message: ChatHostOutbound): void => {
     for (const port of ports) {
@@ -95,6 +154,7 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       } catch {
         // Port died between disconnect event and now — drop it.
         ports.delete(port);
+        portClients.delete(port);
       }
     }
   };
@@ -102,6 +162,7 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
   const snapshot = (run: RunState): RunSnapshot => ({
     runId: run.runId,
     userText: run.userText,
+    userMessageId: run.userMessageId,
     conversationId: run.conversationId,
     sessionId: run.sessionId,
     done: run.done,
@@ -139,38 +200,77 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
     run.events.push(event);
   };
 
+  const persistCompletedRun = (run: RunState): void => {
+    const conversationId = run.conversationId;
+    if (
+      !deps.onRunComplete ||
+      !run.done ||
+      !run.completedDetached ||
+      run.persistencePending ||
+      !conversationId ||
+      run.persistedConversationId === conversationId
+    ) {
+      return;
+    }
+
+    run.persistedConversationId = conversationId;
+    persistenceTaskCount += 1;
+    syncActiveSignal();
+    void Promise.resolve(deps.onRunComplete(snapshot(run)))
+      .catch(() => {
+        if (run.persistedConversationId === conversationId) {
+          run.persistedConversationId = null;
+        }
+      })
+      .finally(() => {
+        persistenceTaskCount = Math.max(0, persistenceTaskCount - 1);
+        syncActiveSignal();
+      });
+  };
+
   const finishRun = (run: RunState): void => {
     if (run.done) return;
     run.done = true;
-    run.completedDetached = !Array.from(portClients.values()).includes(
-      run.clientId,
-    );
+    run.completedDetached =
+      run.detached || !Array.from(portClients.values()).includes(run.clientId);
     run.generator = null;
     broadcast(run, {
       type: "turn_done",
       runId: run.runId,
       interrupted: run.interrupted,
     });
-    deps.onActiveChange?.(false);
-    if (cleanupTimer) clearTimeout(cleanupTimer);
-    cleanupTimer = setTimeout(() => {
-      if (currentRun === run && run.done) {
-        currentRun = null;
+    persistCompletedRun(run);
+    activeRunCount = Math.max(0, activeRunCount - 1);
+    syncActiveSignal();
+
+    const key = runKey(run.clientId, run.runId);
+    const existingTimer = cleanupTimers.get(key);
+    if (existingTimer) clearTimeout(existingTimer);
+    const cleanupTimer = setTimeout(() => {
+      if (runs.get(key) === run && run.done) {
+        runs.delete(key);
       }
+      cleanupTimers.delete(key);
     }, retentionMs);
+    cleanupTimers.set(key, cleanupTimer);
   };
 
   const pumpRun = async (run: RunState): Promise<void> => {
     try {
-      const agent = await deps.createAgent();
-      if (run.done || run.interrupted || currentRun !== run) return;
+      const agent = await deps.createAgent({
+        clientId: run.clientId,
+        runId: run.runId,
+        sessionId: run.sessionId ?? undefined,
+        routeId: run.routeId,
+      });
+      if (!isRunnable(run)) return;
       // Auto-attach a fresh viewport screenshot to this turn (when enabled), so
       // the model always sees what's on the user's screen right now. Best-effort:
       // any failure just sends the turn without an ambient image.
       const ambientImage = deps.captureViewport
         ? await deps.captureViewport().catch(() => null)
         : null;
-      if (run.done || run.interrupted || currentRun !== run) return;
+      if (!isRunnable(run)) return;
       const generator = agent.chat(run.userText, {
         sessionId: run.sessionId ?? undefined,
         contexts: run.pendingOptions?.contexts as ChatOptions["contexts"],
@@ -179,19 +279,23 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       });
       run.generator = generator;
       for await (const event of generator) {
-        if (run.done || run.interrupted || currentRun !== run) break;
+        if (!isRunnable(run)) break;
         if (
           event.type === "session_created" ||
           event.type === "session_resumed"
         ) {
           run.sessionId = event.sessionId;
+          sessionRouteIds.set(
+            sessionKey(run.clientId, event.sessionId),
+            run.routeId,
+          );
         }
         const wire = serializeAgentEvent(event);
         bufferEvent(run, wire);
         broadcast(run, { type: "event", runId: run.runId, event: wire });
       }
     } catch (error) {
-      if (run.done || run.interrupted || currentRun !== run) return;
+      if (!isRunnable(run)) return;
       run.error = error instanceof Error ? error.message : String(error);
       const wire = serializeAgentEvent({
         type: "error",
@@ -225,39 +329,51 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
     try {
       switch (message.method) {
         case "rollback_last_assistant_turn": {
-          const agent = await deps.createAgent();
-          const result = await agent.rollbackLastAssistantTurn(
-            String(message.args.sessionId ?? ""),
-          );
+          const targetSessionId = String(message.args.sessionId ?? "");
+          const agent = await deps.createAgent({
+            clientId: message.clientId,
+            sessionId: targetSessionId,
+            routeId: sessionRouteIds.get(
+              sessionKey(message.clientId, targetSessionId),
+            ),
+          });
+          const result = await agent.rollbackLastAssistantTurn(targetSessionId);
           reply(true, result);
           return;
         }
         case "delete_session": {
-          const agent = await deps.createAgent();
-          await agent
-            .getConversationManager()
-            ?.deleteSession(String(message.args.sessionId ?? ""));
+          const targetSessionId = String(message.args.sessionId ?? "");
+          const agent = await deps.createAgent({
+            clientId: message.clientId,
+            sessionId: targetSessionId,
+            routeId: sessionRouteIds.get(
+              sessionKey(message.clientId, targetSessionId),
+            ),
+          });
+          await agent.getConversationManager()?.deleteSession(targetSessionId);
+          sessionRouteIds.delete(sessionKey(message.clientId, targetSessionId));
           reply(true);
           return;
         }
         case "fresh_gateway_thread": {
-          if (
-            currentRun &&
-            !currentRun.done &&
-            currentRun.clientId !== message.clientId
-          ) {
-            reply(
-              false,
-              undefined,
-              "Another Eterna window is already running.",
-            );
-            return;
-          }
+          const hasActiveRun = Array.from(runs.values()).some(
+            (run) => !run.done,
+          );
+          const resetRemote = message.args.resetRemote !== false;
           deps.freshGatewayThread?.(
             typeof message.args.model === "string"
               ? message.args.model
               : undefined,
+            { resetRemote: resetRemote && !hasActiveRun },
           );
+          if (hasActiveRun && resetRemote) {
+            reply(
+              false,
+              undefined,
+              "A response is still running in the background.",
+            );
+            return;
+          }
           reply(true);
           return;
         }
@@ -282,7 +398,12 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
     }
     switch (message.type) {
       case "start_turn": {
-        if (currentRun && !currentRun.done) {
+        const existingRun = retainedRun(message.clientId, message.runId);
+        const attachedActiveRun = latestRun(
+          (run) =>
+            run.clientId === message.clientId && !run.done && !run.detached,
+        );
+        if (existingRun || attachedActiveRun) {
           port.postMessage({
             type: "start_rejected",
             runId: message.runId,
@@ -290,20 +411,30 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
           });
           return;
         }
-        if (cleanupTimer) {
-          clearTimeout(cleanupTimer);
-          cleanupTimer = null;
-        }
         const run: RunState = {
           clientId: message.clientId,
           runId: message.runId,
+          routeId:
+            message.options.routeId ??
+            (message.options.sessionId
+              ? sessionRouteIds.get(
+                  sessionKey(message.clientId, message.options.sessionId),
+                )
+              : undefined) ??
+            `${message.clientId}:${message.runId}`,
+          sequence: ++nextSequence,
           userText: message.text,
+          userMessageId: null,
           conversationId: null,
           sessionId: message.options.sessionId ?? null,
           events: [],
           truncated: false,
           done: false,
           interrupted: false,
+          detached: false,
+          attachedConsumerId: message.runId,
+          persistencePending: false,
+          persistedConversationId: null,
           completedDetached: false,
           error: null,
           generator: null,
@@ -312,20 +443,16 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
             images: message.options.images,
           },
         };
-        currentRun = run;
-        deps.onActiveChange?.(true);
+        runs.set(runKey(run.clientId, run.runId), run);
+        activeRunCount += 1;
+        syncActiveSignal();
         void pumpRun(run);
         return;
       }
 
       case "interrupt": {
-        const run = currentRun;
-        if (
-          run &&
-          run.clientId === message.clientId &&
-          run.runId === message.runId &&
-          !run.done
-        ) {
+        const run = retainedRun(message.clientId, message.runId);
+        if (run && !run.done) {
           run.interrupted = true;
           const generator = run.generator;
           if (generator && typeof generator.return === "function") {
@@ -339,22 +466,79 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
         return;
       }
 
+      case "detach": {
+        const run = retainedRun(message.clientId, message.runId);
+        if (run) {
+          if (
+            message.consumerId &&
+            run.attachedConsumerId !== message.consumerId
+          ) {
+            return;
+          }
+          run.detached = true;
+          run.attachedConsumerId = null;
+          if (message.persistencePending !== undefined) {
+            run.persistencePending = message.persistencePending;
+          }
+          if (message.conversationId) {
+            run.conversationId = message.conversationId;
+          }
+          if (message.userMessageId) {
+            run.userMessageId = message.userMessageId;
+          }
+          if (run.done) {
+            run.completedDetached = true;
+            persistCompletedRun(run);
+          }
+        }
+        return;
+      }
+
       case "attach": {
-        if (currentRun?.clientId === message.clientId) {
-          port.postMessage({ type: "replay", run: snapshot(currentRun) });
-        } else {
-          port.postMessage({ type: "no_active_run" });
+        const run = message.conversationId
+          ? latestRun(
+              (candidate) =>
+                candidate.clientId === message.clientId &&
+                candidate.conversationId === message.conversationId,
+            )
+          : latestRun(
+              (candidate) =>
+                candidate.clientId === message.clientId &&
+                !candidate.detached &&
+                (!candidate.done || candidate.completedDetached),
+            );
+        if (!run) {
+          port.postMessage({
+            type: "no_active_run",
+            requestId: message.requestId,
+          });
+          return;
+        }
+        const replay = snapshot(run);
+        port.postMessage({
+          type: "replay",
+          requestId: message.requestId,
+          run: replay,
+        });
+        run.detached = false;
+        run.attachedConsumerId = message.requestId;
+        if (run.done) {
+          run.completedDetached = false;
         }
         return;
       }
 
       case "bind_conversation": {
-        if (
-          currentRun &&
-          currentRun.clientId === message.clientId &&
-          currentRun.runId === message.runId
-        ) {
-          currentRun.conversationId = message.conversationId;
+        const run = retainedRun(message.clientId, message.runId);
+        if (run) {
+          run.conversationId = message.conversationId;
+          if (message.userMessageId) {
+            run.userMessageId = message.userMessageId;
+          }
+          if (message.persistenceReady) {
+            run.persistencePending = false;
+          }
+          persistCompletedRun(run);
         }
         return;
       }
@@ -376,7 +560,14 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       });
     },
     getCurrentRun(): RunSnapshot | null {
-      return currentRun ? snapshot(currentRun) : null;
+      const run = latestRun(() => true);
+      return run ? snapshot(run) : null;
+    },
+    getRun(runId: string, clientId?: string): RunSnapshot | null {
+      const run = clientId
+        ? retainedRun(clientId, runId)
+        : latestRun((candidate) => candidate.runId === runId);
+      return run ? snapshot(run) : null;
     },
   };
 }

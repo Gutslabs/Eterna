@@ -1,5 +1,13 @@
 import type { FunctionTool } from "@aipexstudio/aipex-core";
 import type { z } from "zod";
+import {
+  createBookmarkFolderTool,
+  createBookmarkTool,
+  deleteBookmarkTool,
+  listBookmarksTool,
+  searchBookmarksTool,
+  updateBookmarkTool,
+} from "./bookmark";
 import { computerTool } from "./computer";
 import {
   clickTool,
@@ -9,6 +17,11 @@ import {
   hoverElementByUidTool,
 } from "./element";
 import { extractStructuredDataTool } from "./extract-structured-data";
+import {
+  getMostVisitedSitesTool,
+  getRecentHistoryTool,
+  searchHistoryTool,
+} from "./history";
 import { interventionTools } from "./interventions/index.js";
 import { forgetTool, rememberTool } from "./memory";
 import {
@@ -43,23 +56,39 @@ import {
   ungroupTabsTool,
 } from "./tab";
 import { downloadChatImagesTool, downloadImageTool } from "./tools/downloads";
+import {
+  getRecentlyClosedSessionsTool,
+  restoreSessionTool,
+} from "./tools/sessions";
+import {
+  createTabGroupTool,
+  deleteTabGroupTool,
+  getAllTabGroupsTool,
+  updateTabGroupTool,
+} from "./tools/tab-groups";
 import { uploadFileToInputTool } from "./tools/upload-file";
 import { webSearchTool } from "./web";
 import { getYoutubeTranscriptTool } from "./youtube-transcript";
 
 /**
  * All browser tools registered for AI use
- * Total: 41 tools (37 core + 4 intervention tools)
+ * Total: 56 tools (52 core + 4 intervention tools)
  *
- * Disabled tools (per aipex):
+ * Deliberately NOT registered:
  * - duplicate_tab (not in aipex)
  * - wait (replaced by computer tool's wait action)
- * - capture_screenshot_to_clipboard (not enabled in aipex default bundle)
- * - read_clipboard_image (P1 clipboard tool – not enabled by default; requires security review)
- * - get_clipboard_image_info (P1 clipboard tool – not enabled by default; requires security review)
+ * - capture_screenshot_to_clipboard (not enabled in default bundle)
+ * - read_clipboard_image / get_clipboard_image_info (P1 clipboard tools – require security review)
  * - download_text_as_markdown (not enabled in aipex)
  * - download_current_chat_images (architecture issue, not enabled in aipex)
- * - organize_tabs (stub implementation, temporarily disabled until AI grouping is complete)
+ * - organize_tabs (stub implementation, disabled until AI grouping is complete;
+ *   the agent can group tabs itself via get_all_tabs + create_tab_group)
+ * - delete_bookmark_folder (recursive mass deletion – too destructive for the default bundle)
+ * - delete_history_item / clear_history (destructive history wipes – not agent-safe by default)
+ * - get_bookmark / get_history_stats (marginal value, kept out to limit prompt size)
+ *
+ * The MCP bridge advertises this exact set; mcp-schema-sync.test.ts enforces parity
+ * with mcp-bridge/src/tool-schemas.ts.
  */
 type BrowserFunctionTool = FunctionTool<
   unknown,
@@ -77,6 +106,29 @@ const browserFunctionTools: BrowserFunctionTool[] = [
   getTabInfoTool,
   closeTabTool,
   ungroupTabsTool,
+
+  // Tab Groups (4 tools)
+  getAllTabGroupsTool,
+  createTabGroupTool,
+  updateTabGroupTool,
+  deleteTabGroupTool,
+
+  // Recently closed sessions (2 tools)
+  getRecentlyClosedSessionsTool,
+  restoreSessionTool,
+
+  // Bookmarks (6 tools)
+  listBookmarksTool,
+  searchBookmarksTool,
+  createBookmarkTool,
+  updateBookmarkTool,
+  deleteBookmarkTool,
+  createBookmarkFolderTool,
+
+  // History (3 tools, read-only)
+  getRecentHistoryTool,
+  searchHistoryTool,
+  getMostVisitedSitesTool,
 
   // UI Operations (8 tools) - computer tool replaces visual XY tools
   searchElementsTool,

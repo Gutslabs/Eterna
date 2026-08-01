@@ -10,10 +10,10 @@
  * picking a prompt auto-sends "prompt + selected text".
  *
  * The composed message is written to chrome.storage.local under
- * `aipex-pending-autosend` (consumed + submitted by SelectionAutoSend inside
+ * `eterna-pending-autosend` (consumed + submitted by SelectionAutoSend inside
  * the chat iframe), and this tab's panel is opened directly via the sidebar
  * command bus. Ctrl/Cmd+C while the panel is open still drops the selection in
- * as a context chip (via `aipex-pending-selection`) without sending.
+ * as a context chip (via `eterna-pending-selection`) without sending.
  */
 
 import {
@@ -23,11 +23,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { writePendingAutosend } from "./pending-autosend";
 import { dispatchSidebarCommand } from "./sidebar-commands";
 import { readSidebarOpen } from "./sidebar-open-flag";
 
-const PENDING_SELECTION_KEY = "aipex-pending-selection";
-const PENDING_AUTOSEND_KEY = "aipex-pending-autosend";
+const PENDING_SELECTION_KEY = "eterna-pending-selection";
 const SAVED_PROMPTS_KEY = "aipex-saved-prompts";
 const MIN_SELECTION_LENGTH = 3;
 
@@ -194,14 +194,7 @@ export function SelectionAction() {
     const current = buttonRef.current;
     if (!current) return;
     // Hand the composed message to the chat iframe (it submits on mount)…
-    chrome.storage.local
-      .set({
-        [PENDING_AUTOSEND_KEY]: {
-          text: composeMessage(current.text, prompt),
-          ts: Date.now(),
-        },
-      })
-      .catch(() => {});
+    writePendingAutosend(composeMessage(current.text, prompt)).catch(() => {});
     // …and open this tab's panel directly — no global flag, so other tabs stay
     // as they are.
     dispatchSidebarCommand("open");

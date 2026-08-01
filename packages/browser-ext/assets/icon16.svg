@@ -1,4 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <rect width="16" height="16" rx="3.5" fill="#6366f1"/>
-  <text x="8" y="11.6" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="bold" fill="#ffffff" text-anchor="middle">E</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <title>Eterna</title>
+  <g fill="none" stroke="#ff5a36" stroke-linecap="round" stroke-linejoin="round" transform="translate(4)">
+    <path d="M72 25H45C31.2 25 20 36.2 20 50s11.2 25 25 25h27" stroke-width="10" />
+    <path d="M42 50h28" stroke-width="10" />
+    <path d="M72 25 61 34M72 75 61 66" stroke-width="5" />
+  </g>
 </svg>

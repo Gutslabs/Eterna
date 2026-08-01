@@ -1,11 +1,7 @@
 /**
  * AI Provider Factory
- * Creates AI SDK provider instances based on configuration.
- *
- * Supports two modes:
- * 1. BYOK (Bring Your Own Key) – user provides their own API key and model.
- * 2. Proxy mode – uses https://www.claudechrome.com/api/ai/chat with
- *    cookie-based auth (better-auth / session cookies).
+ * Creates AI SDK provider instances based on configuration: BYOK (bring your
+ * own key), the ChatGPT subscription (Codex OAuth), and the local gateways.
  */
 
 import { createAnthropic } from "@ai-sdk/anthropic";
@@ -13,7 +9,6 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI, type OpenAIProvider } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { AIProviderKey, AppSettings } from "@aipexstudio/aipex-core";
-import { WEBSITE_URL } from "../config/website";
 import { getValidAccessToken } from "../services/chatgpt-auth";
 
 export interface ProviderConfig {
@@ -21,12 +16,6 @@ export interface ProviderConfig {
   apiKey: string;
   baseURL?: string;
 }
-
-/** Default model used when the user has not configured BYOK. */
-export const PROXY_DEFAULT_MODEL = "deepseek/deepseek-chat-v3.1";
-
-/** Proxy API endpoint for non-BYOK users. */
-export const PROXY_API_URL = `${WEBSITE_URL}/api/ai`;
 
 /**
  * Validate that a user-provided host URL is safe to use.
@@ -81,22 +70,6 @@ export function isByokConfigured(settings: AppSettings): boolean {
 }
 
 /**
- * Retrieve authentication cookies from claudechrome.com for the proxy API.
- * Returns a Cookie header string, or empty string if unavailable.
- */
-export async function getProxyCookieHeader(): Promise<string> {
-  try {
-    const cookies = await chrome.cookies.getAll({ url: WEBSITE_URL });
-    const relevant = cookies.filter(
-      (c) => c.name.includes("better-auth") || c.name.includes("session"),
-    );
-    return relevant.map((c) => `${c.name}=${c.value}`).join("; ");
-  } catch {
-    return "";
-  }
-}
-
-/**
  * Create an AI SDK provider for BYOK mode.
  */
 export function createAIProvider(settings: AppSettings) {
@@ -120,182 +93,6 @@ export function createAIProvider(settings: AppSettings) {
       }
       return createOpenAICompatible({ apiKey, baseURL, name: provider });
   }
-}
-
-/**
- * Stateful SSE stream transform that fixes parameterless tool calls from
- * providers like Anthropic via OpenRouter/proxy.
- *
- * Some providers stream tool_calls with `"arguments":""` for every chunk when
- * the tool has no parameters. The AI SDK uses `isParsableJson` to decide when
- * a tool call is complete, and `""` never passes that check, so the tool call
- * is silently dropped.
- *
- * A naive text-replacement of `""` → `"{}"` on every chunk would break tools
- * that DO have arguments (the first empty chunk would be treated as complete
- * `{}`, and all subsequent real-argument chunks would be discarded).
- *
- * This transform tracks tool call state across the stream:
- * - Passes all SSE lines through **unchanged** during streaming
- * - When `finish_reason: "tool_calls"` arrives, injects a synthetic SSE chunk
- *   with `"arguments":"{}"` for every tool call whose accumulated arguments
- *   are still empty — right before the finish chunk
- */
-export function createEmptyToolArgsFinalizer(
-  original: ReadableStream<Uint8Array>,
-): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  let buffer = "";
-
-  // Track accumulated arguments per tool call index
-  const toolCallArgs = new Map<
-    number,
-    { id: string; name: string; args: string }
-  >();
-  // Capture the chunk id so synthetic events look like they belong to the same response
-  let streamId: string | undefined;
-
-  function processLine(
-    line: string,
-    controller: ReadableStreamDefaultController<Uint8Array>,
-  ) {
-    if (!line.startsWith("data: ") || line === "data: [DONE]") {
-      controller.enqueue(encoder.encode(`${line}\n`));
-      return;
-    }
-
-    let parsed: any;
-    try {
-      parsed = JSON.parse(line.slice(6));
-    } catch {
-      controller.enqueue(encoder.encode(`${line}\n`));
-      return;
-    }
-
-    if (!streamId && parsed.id) {
-      streamId = parsed.id;
-    }
-
-    const choice = parsed.choices?.[0];
-
-    // Track tool call arguments
-    const toolCalls = choice?.delta?.tool_calls;
-    if (Array.isArray(toolCalls)) {
-      for (const tc of toolCalls) {
-        const idx = tc.index;
-        if (typeof idx !== "number") continue;
-
-        const existing = toolCallArgs.get(idx);
-        if (!existing) {
-          toolCallArgs.set(idx, {
-            id: tc.id ?? "",
-            name: tc.function?.name ?? "",
-            args: tc.function?.arguments ?? "",
-          });
-        } else {
-          if (tc.function?.arguments != null) {
-            existing.args += tc.function.arguments;
-          }
-        }
-      }
-    }
-
-    // When finish_reason is tool_calls, inject synthetic chunks for empty args
-    if (choice?.finish_reason === "tool_calls") {
-      for (const [idx, tc] of toolCallArgs) {
-        if (tc.args === "") {
-          const synthetic = {
-            id: streamId ?? parsed.id ?? "",
-            object: "chat.completion.chunk",
-            created: parsed.created ?? 0,
-            model: parsed.model ?? "",
-            choices: [
-              {
-                index: 0,
-                delta: {
-                  tool_calls: [
-                    {
-                      index: idx,
-                      function: { arguments: "{}" },
-                    },
-                  ],
-                },
-                finish_reason: null,
-              },
-            ],
-          };
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(synthetic)}\n\n`),
-          );
-        }
-      }
-    }
-
-    controller.enqueue(encoder.encode(`${line}\n`));
-  }
-
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const reader = original.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            if (buffer.length > 0) {
-              processLine(buffer, controller);
-            }
-            controller.close();
-            break;
-          }
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop()!;
-          for (const line of lines) {
-            processLine(line, controller);
-          }
-        }
-      } catch (err) {
-        controller.error(err);
-      }
-    },
-  });
-}
-
-/**
- * Create an AI SDK provider for proxy mode (non-BYOK).
- *
- * Uses the claudechrome.com proxy endpoint which accepts OpenAI-compatible
- * requests and authenticates via session cookies.
- */
-export function createProxyProvider(): OpenAIProvider["chat"] {
-  const openai = createOpenAI({
-    apiKey: "proxy-no-key",
-    baseURL: PROXY_API_URL,
-    fetch: async (input, init) => {
-      const cookieHeader = await getProxyCookieHeader();
-      const headers = new Headers(init?.headers);
-      if (cookieHeader) {
-        headers.set("Cookie", cookieHeader);
-      }
-      headers.delete("Authorization");
-      const response = await globalThis.fetch(input, { ...init, headers });
-
-      const contentType = response.headers.get("content-type") ?? "";
-      if (contentType.includes("text/event-stream") && response.body) {
-        const patched = createEmptyToolArgsFinalizer(response.body);
-        return new Response(patched, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers,
-        });
-      }
-
-      return response;
-    },
-  });
-
-  return openai.chat;
 }
 
 // =============================================================================
@@ -348,7 +145,7 @@ export const CATGPT_GATEWAY_MODELS = [
 ] as const;
 
 export function isCatGptGatewayModel(model: string | undefined): boolean {
-  // Sub-models are encoded as "<base>::<label>", e.g. "claude-browser::Opus 4.8|High".
+  // Sub-models are encoded as "<base>::<label>", e.g. "claude-browser::Opus 5|High".
   const base = model?.split("::")[0];
   return !!base && (CATGPT_GATEWAY_MODELS as readonly string[]).includes(base);
 }
@@ -497,28 +294,86 @@ function extractMessageText(content: unknown): string {
   return "";
 }
 
-/**
- * Conversation identity for gateway thread routing. Module state lives per
- * sidebar instance (each tab's iframe is its own JS context), so parallel
- * sidebars automatically get distinct conversations on the gateway. A new id
- * is minted when the outgoing request has no assistant turn yet (a fresh
- * AIPex chat — covers the New Chat button and a freshly opened sidebar) or
- * when the history's first user message changes (the user switched to a
- * different stored conversation in the same sidebar).
- */
-let gatewayConversationId: string | null = null;
-let gatewayConversationFirstUserText: string | null = null;
+async function gatewayErrorMessage(response: Response): Promise<string> {
+  const text = await response
+    .clone()
+    .text()
+    .catch(() => "");
+  if (!text) return response.statusText || "Unknown gateway error";
+
+  try {
+    const body = JSON.parse(text) as {
+      detail?: unknown;
+      error?: { message?: unknown } | string;
+    };
+    if (typeof body.detail === "string") return body.detail;
+    if (typeof body.error === "string") return body.error;
+    if (typeof body.error?.message === "string") return body.error.message;
+  } catch {
+    // Plain-text and HTML proxy errors fall through to the bounded body.
+  }
+
+  return text.slice(0, 1000);
+}
 
 /**
- * Eager reset for the user's New Chat click: forget the current conversation
- * identity (the next send mints a fresh one) and, for gateway models, have
- * the gateway open the web UI's own new chat right away — so the reset is
- * visible immediately and the next message pays no new-chat latency.
+ * Conversation identities for gateway thread routing. This module runs in the
+ * shared background worker, so one mutable "current conversation" slot would
+ * be overwritten whenever another sidebar, stored chat, provider, or
+ * compression request runs. Keep a small LRU keyed by provider + the complete
+ * first user message instead.
  */
-export function startFreshGatewayThread(model: string | undefined): void {
-  gatewayConversationId = null;
-  gatewayConversationFirstUserText = null;
+const MAX_GATEWAY_CONVERSATIONS = 100;
+const gatewayConversationIds = new Map<string, string>();
+const gatewayProvidersRequiringFreshIdentity = new Set<string>();
+
+function gatewayConversationFingerprint(value: string): string {
+  let first = 0xdeadbeef ^ value.length;
+  let second = 0x41c6ce57 ^ value.length;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    first = Math.imul(first ^ code, 2654435761);
+    second = Math.imul(second ^ code, 1597334677);
+  }
+  first =
+    Math.imul(first ^ (first >>> 16), 2246822507) ^
+    Math.imul(second ^ (second >>> 13), 3266489909);
+  second =
+    Math.imul(second ^ (second >>> 16), 2246822507) ^
+    Math.imul(first ^ (first >>> 13), 3266489909);
+  return `${value.length}:${(second >>> 0).toString(36)}${(first >>> 0).toString(36)}`;
+}
+
+function gatewayConversationKey(
+  model: string | undefined,
+  firstUserText: string,
+  routingId?: string,
+): string {
+  const identity = routingId
+    ? `route:${routingId}`
+    : `prompt:${gatewayConversationFingerprint(firstUserText)}`;
+  return `${gatewayProviderKey(model)}\u0000${identity}`;
+}
+
+function gatewayProviderKey(model: string | undefined): string {
+  return model?.split("::", 1)[0] ?? "catgpt-browser";
+}
+
+/**
+ * Reset for the user's New Chat click. The next request gets a fresh local
+ * identity without discarding mappings for other saved conversations; the
+ * caller may leave the remote web thread untouched while an older request is
+ * still using it.
+ */
+export function startFreshGatewayThread(
+  model: string | undefined,
+  options: { resetRemote?: boolean } = {},
+): void {
   if (!isCatGptGatewayModel(model)) {
+    return;
+  }
+  gatewayProvidersRequiringFreshIdentity.add(gatewayProviderKey(model));
+  if (options.resetRemote === false) {
     return;
   }
   const base = model?.startsWith("claude-browser")
@@ -534,21 +389,51 @@ export function startFreshGatewayThread(model: string | undefined): void {
 }
 
 /**
- * Minting is keyed on (null id | changed first-user-text) ONLY — deliberately
- * NOT on "no assistant turn yet": the AI SDK retries failed requests through
- * this fetch, and minting per attempt opened a fresh web thread for every
- * retry of a conversation's first message. New Chat resets the id explicitly
- * via startFreshGatewayThread, so a retry reuses the same conversation.
+ * A UI route deterministically maps to one gateway conversation, so an MV3
+ * service-worker restart cannot silently open a new web thread. Legacy callers
+ * without a route retain prompt-based retry identity and the fresh-chat marker.
  */
-function resolveGatewayConversationId(firstUserText: string): string {
-  if (
-    gatewayConversationId === null ||
-    firstUserText !== gatewayConversationFirstUserText
-  ) {
-    gatewayConversationId = crypto.randomUUID();
-    gatewayConversationFirstUserText = firstUserText;
+function resolveGatewayConversationId(
+  model: string | undefined,
+  firstUserText: string,
+  canConsumeFreshIdentity: boolean,
+  routingId?: string,
+): string {
+  const providerKey = gatewayProviderKey(model);
+  if (routingId) {
+    if (canConsumeFreshIdentity) {
+      gatewayProvidersRequiringFreshIdentity.delete(providerKey);
+    }
+    const fingerprint = gatewayConversationFingerprint(
+      `${providerKey}\u0000${routingId}`,
+    ).replace(":", "-");
+    return `eterna-${fingerprint}`;
   }
-  return gatewayConversationId;
+
+  const key = gatewayConversationKey(model, firstUserText, routingId);
+  const existing = gatewayConversationIds.get(key);
+  let forceFresh = false;
+  if (
+    canConsumeFreshIdentity &&
+    gatewayProvidersRequiringFreshIdentity.has(providerKey)
+  ) {
+    forceFresh = gatewayProvidersRequiringFreshIdentity.delete(providerKey);
+  }
+  if (existing && !forceFresh) {
+    gatewayConversationIds.delete(key);
+    gatewayConversationIds.set(key, existing);
+    return existing;
+  }
+
+  const conversationId = crypto.randomUUID();
+  gatewayConversationIds.set(key, conversationId);
+  if (gatewayConversationIds.size > MAX_GATEWAY_CONVERSATIONS) {
+    const oldestKey = gatewayConversationIds.keys().next().value;
+    if (oldestKey !== undefined) {
+      gatewayConversationIds.delete(oldestKey);
+    }
+  }
+  return conversationId;
 }
 
 /**
@@ -562,6 +447,7 @@ function resolveGatewayConversationId(firstUserText: string): string {
 export async function catgptGatewayFetch(
   _input: RequestInfo | URL,
   init?: RequestInit,
+  routingId?: string,
 ): Promise<Response> {
   let wantsStream = false;
   let firstUserText = "";
@@ -579,7 +465,7 @@ export async function catgptGatewayFetch(
         ? parsedBody.messages
         : [];
       const firstUser = messages.find((m) => m?.role === "user");
-      firstUserText = extractMessageText(firstUser?.content).slice(0, 200);
+      firstUserText = extractMessageText(firstUser?.content);
     } catch {
       // ignore — an unparsable body falls through as an empty message
     }
@@ -609,7 +495,15 @@ export async function catgptGatewayFetch(
             part !== null &&
             (part as { type?: unknown }).type === "text",
         )));
-  const conversationId = resolveGatewayConversationId(firstUserText);
+  const canConsumeFreshIdentity = !allMessages.some(
+    (message) => message?.role === "assistant" || message?.role === "tool",
+  );
+  const conversationId = resolveGatewayConversationId(
+    model,
+    firstUserText,
+    canConsumeFreshIdentity,
+    routingId,
+  );
 
   const response = await globalThis.fetch(`${origin}/v1/chat/completions`, {
     ...init,
@@ -625,10 +519,14 @@ export async function catgptGatewayFetch(
     }),
   });
   if (!response.ok) {
-    console.error("[catgpt-gateway] chat completion failed", {
-      status: response.status,
-      requestId: response.headers.get("x-request-id") ?? undefined,
-    });
+    const detail = await gatewayErrorMessage(response);
+    const requestId = response.headers.get("x-request-id");
+    // One plain string: browsers' extension error panels render extra
+    // console.error arguments as "[object Object]".
+    console.error(
+      `[catgpt-gateway] chat completion failed (${response.status}): ${detail}` +
+        (requestId ? ` [request ${requestId}]` : ""),
+    );
     return response;
   }
   if (
@@ -684,12 +582,12 @@ export async function catgptGatewayFetch(
  * (github.com/GautamVhavle/CatGPT-Gateway), which exposes the user's ChatGPT
  * web session as an OpenAI-compatible API. The gateway ignores the API key.
  */
-export function createCatGptGatewayProvider() {
+export function createCatGptGatewayProvider(routingId?: string) {
   return createOpenAICompatible({
     name: "catgpt-gateway",
     baseURL: CATGPT_GATEWAY_URL,
     apiKey: CATGPT_GATEWAY_TOKEN,
-    fetch: catgptGatewayFetch,
+    fetch: (input, init) => catgptGatewayFetch(input, init, routingId),
   });
 }
 

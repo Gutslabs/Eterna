@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { UIMessage, UIToolPart } from "../../../types";
 import {
+  BROWSER_ACTIVITY_SEPARATOR,
   buildTurnBlocks,
   formatActivityDuration,
   toolTargetText,
@@ -94,6 +95,35 @@ describe("buildTurnBlocks", () => {
     expect(rail?.type === "activity" && rail.steps.map((s) => s.kind)).toEqual([
       "thought",
       "tool",
+    ]);
+  });
+
+  it("splits structured browser activity into individual rail steps", () => {
+    const blocks = buildTurnBlocks([
+      msg("m1", [
+        {
+          type: "reasoning",
+          text:
+            `${BROWSER_ACTIVITY_SEPARATOR}ChatGPT web is working…` +
+            `${BROWSER_ACTIVITY_SEPARATOR}Searched 9 websites` +
+            `${BROWSER_ACTIVITY_SEPARATOR}Searching arxiv.org`,
+        },
+        text("Nihai cevap"),
+      ]),
+    ]);
+
+    expect(blocks.map((block) => block.type)).toEqual(["activity", "message"]);
+    const rail = blocks[0];
+    expect(
+      rail?.type === "activity" &&
+        rail.steps.map((step) => [
+          step.kind,
+          step.kind === "tool" ? step.part.toolName : step.text,
+        ]),
+    ).toEqual([
+      ["browser", "ChatGPT web is working…"],
+      ["browser", "Searched 9 websites"],
+      ["browser", "Searching arxiv.org"],
     ]);
   });
 

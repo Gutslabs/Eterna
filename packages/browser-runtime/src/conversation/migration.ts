@@ -3,10 +3,18 @@ import type { ConversationData } from "./types";
 const OLD_STORAGE_KEY = "aipex-conversations";
 const MIGRATION_FLAG_KEY = "aipex-conversations-migrated";
 
+// The legacy data lived in window localStorage, which service workers don't
+// have — there, nothing can need migrating, so every step is a quiet no-op
+// instead of a ReferenceError on each worker start.
+function hasLocalStorage(): boolean {
+  return typeof localStorage !== "undefined";
+}
+
 /**
  * Check if migration has already been completed
  */
 export async function checkMigrationStatus(): Promise<boolean> {
+  if (!hasLocalStorage()) return true;
   try {
     const flag = localStorage.getItem(MIGRATION_FLAG_KEY);
     return flag === "true";
@@ -19,6 +27,7 @@ export async function checkMigrationStatus(): Promise<boolean> {
  * Mark migration as complete
  */
 export async function markMigrationComplete(): Promise<void> {
+  if (!hasLocalStorage()) return;
   try {
     localStorage.setItem(MIGRATION_FLAG_KEY, "true");
     console.log("✅ [Migration] Migration marked as complete");
@@ -31,6 +40,7 @@ export async function markMigrationComplete(): Promise<void> {
  * Get old conversations from localStorage
  */
 export async function getOldConversations(): Promise<ConversationData[]> {
+  if (!hasLocalStorage()) return [];
   try {
     const oldData = localStorage.getItem(OLD_STORAGE_KEY);
     if (!oldData) {
@@ -54,6 +64,7 @@ export async function getOldConversations(): Promise<ConversationData[]> {
  * Remove old localStorage data
  */
 export async function cleanupOldStorage(): Promise<void> {
+  if (!hasLocalStorage()) return;
   try {
     localStorage.removeItem(OLD_STORAGE_KEY);
     console.log("🧹 [Migration] Old localStorage data removed");
@@ -69,6 +80,9 @@ export async function migrate(
   saveCallback: (conversation: ConversationData) => Promise<void>,
 ): Promise<{ success: boolean; migratedCount: number }> {
   try {
+    if (!hasLocalStorage()) {
+      return { success: true, migratedCount: 0 };
+    }
     const alreadyMigrated = await checkMigrationStatus();
     if (alreadyMigrated) {
       console.log("✅ [Migration] Already migrated, skipping");

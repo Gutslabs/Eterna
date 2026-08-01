@@ -15,7 +15,10 @@ export function LocalBackendIndicator() {
     [settings.aiModel],
   );
   const [state, setState] = useState<ProbeState>("checking");
+  const [launching, setLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState<string>();
   const probeGenerationRef = useRef(0);
+  const retryTimerRef = useRef<number | undefined>(undefined);
 
   const check = useCallback(
     async (force = false) => {
@@ -37,22 +40,60 @@ export function LocalBackendIndicator() {
     return () => {
       probeGenerationRef.current += 1;
       window.clearInterval(timer);
+      if (retryTimerRef.current !== undefined) {
+        window.clearTimeout(retryTimerRef.current);
+      }
     };
   }, [backend, check]);
 
   if (!backend) return null;
 
-  const label =
-    state === "checking"
+  const launch = async () => {
+    setLaunching(true);
+    setLaunchError(undefined);
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        request: "launch-eterna-terminal",
+      })) as { success?: boolean; error?: string; setupCommand?: string };
+      if (!result?.success) {
+        const setup = result?.setupCommand
+          ? ` Setup: ${result.setupCommand}`
+          : "";
+        setLaunchError(
+          `${result?.error ?? "Could not open Terminal."}${setup}`,
+        );
+        return;
+      }
+      retryTimerRef.current = window.setTimeout(() => void check(true), 3000);
+    } catch (error) {
+      setLaunchError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  const label = launching
+    ? "Starting Eterna"
+    : state === "checking"
       ? `${backend.label} checking`
       : `${backend.label} ${state}`;
 
   return (
     <button
       type="button"
-      onClick={() => void check(true)}
-      aria-label={`${label}. Click to retry.`}
-      title={`${label} — click to retry`}
+      onClick={() => (state === "offline" ? void launch() : void check(true))}
+      disabled={launching}
+      aria-label={
+        state === "offline"
+          ? `${label}. Click to open Terminal and run Eterna.`
+          : `${label}. Click to retry.`
+      }
+      title={
+        launchError ??
+        (state === "offline"
+          ? "Open Terminal and run eterna"
+          : `${label} — click to retry`)
+      }
       className={cn(
         "inline-flex min-h-7 items-center gap-1.5 rounded-full border border-border px-2 text-xs transition-colors hover:bg-accent/50",
         state === "offline" ? "text-destructive" : "text-muted-foreground",
@@ -64,10 +105,17 @@ export function LocalBackendIndicator() {
           "size-1.5 rounded-full",
           state === "online" && "bg-success",
           state === "offline" && "bg-destructive",
-          state === "checking" && "animate-pulse bg-muted-foreground",
+          (state === "checking" || launching) &&
+            "animate-pulse bg-muted-foreground",
         )}
       />
-      <span>{state === "offline" ? "Offline" : backend.label}</span>
+      <span>
+        {launching
+          ? "Starting…"
+          : state === "offline"
+            ? "Start Eterna"
+            : backend.label}
+      </span>
     </button>
   );
 }

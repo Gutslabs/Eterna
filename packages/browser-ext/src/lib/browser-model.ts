@@ -25,7 +25,6 @@ import {
   createCatGptGatewayProvider,
   createChatGptProvider,
   createGeminiGatewayProvider,
-  createProxyProvider,
   isByokConfigured,
   isCatGptGatewayModel,
   isChatGptModel,
@@ -33,16 +32,17 @@ import {
   isGeminiGatewayModel,
   isXaiGatewayModel,
   normalizeCodexModel,
-  PROXY_DEFAULT_MODEL,
 } from "./ai-provider";
 
 /**
- * Create the AI model for the given settings.
- *
- * When BYOK is configured, uses the user's provider + model.
- * Otherwise, uses the claudechrome.com proxy with a default model.
+ * Create the AI model for the given settings: ChatGPT subscription, local
+ * gateways, or BYOK. There is no hosted fallback — an unconfigured model is
+ * a configuration error surfaced to the user.
  */
-export function createBrowserModel(settings: AppSettings) {
+export function createBrowserModel(
+  settings: AppSettings,
+  gatewayRouteId?: string,
+) {
   if (isChatGptModel(settings.aiModel)) {
     // ChatGPT subscription path – Codex Responses API with OAuth
     return aisdk(
@@ -53,7 +53,7 @@ export function createBrowserModel(settings: AppSettings) {
   const gatewayModel = settings.aiModel;
   if (gatewayModel && isCatGptGatewayModel(gatewayModel)) {
     // CatGPT-Gateway path – local OpenAI-compatible server
-    return aisdk(createCatGptGatewayProvider()(gatewayModel));
+    return aisdk(createCatGptGatewayProvider(gatewayRouteId)(gatewayModel));
   }
 
   if (
@@ -77,10 +77,10 @@ export function createBrowserModel(settings: AppSettings) {
     return aisdk(provider(modelId));
   }
 
-  // Proxy path – use claudechrome.com API with cookie auth
-  const provider = createProxyProvider();
-  const modelId = settings.aiModel || PROXY_DEFAULT_MODEL;
-  return aisdk(provider(modelId));
+  throw new Error(
+    "No AI provider configured. Pick a model in Settings (ChatGPT sign-in, " +
+      "a local gateway, or your own API key).",
+  );
 }
 
 /**

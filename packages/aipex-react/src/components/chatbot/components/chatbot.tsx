@@ -4,6 +4,7 @@ import { useTranslation } from "../../../i18n/context";
 import { cn } from "../../../lib/utils";
 import type {
   ChatbotThemeVariables,
+  ChatResetOptions,
   ContextItem,
   MessageAttachment,
   UIMessage,
@@ -163,6 +164,10 @@ export function ChatbotProvider({
       messages: chatState.messages,
       status: chatState.status,
       sessionId: chatState.sessionId,
+      activeRunId: chatState.activeRunId,
+      getActiveRunId: chatState.getActiveRunId,
+      getMessagesSnapshot: chatState.getMessagesSnapshot,
+      detachActiveRun: chatState.detachActiveRun,
       metrics: chatState.metrics,
       sendMessage: wrappedSendMessage,
       continueConversation: chatState.continueConversation,
@@ -176,6 +181,10 @@ export function ChatbotProvider({
       chatState.messages,
       chatState.status,
       chatState.sessionId,
+      chatState.activeRunId,
+      chatState.getActiveRunId,
+      chatState.getMessagesSnapshot,
+      chatState.detachActiveRun,
       chatState.metrics,
       wrappedSendMessage,
       chatState.continueConversation,
@@ -370,11 +379,14 @@ function ChatbotContent({
     navigator.clipboard.writeText(text);
   }, []);
 
-  const handleNewChat = useCallback(() => {
-    reset?.();
-    setInput("");
-    setInputResetCount((count) => count + 1);
-  }, [reset]);
+  const handleNewChat = useCallback(
+    (options?: ChatResetOptions) => {
+      reset?.(options);
+      setInput("");
+      setInputResetCount((count) => count + 1);
+    },
+    [reset],
+  );
 
   return (
     <div

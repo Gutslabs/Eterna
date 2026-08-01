@@ -13,6 +13,7 @@ import uxAuditWalkthroughMarkdown from "../../built-in/ux-audit-walkthrough/SKIL
 import wcag22A11yAuditMarkdown from "../../built-in/wcag22-a11y-audit/SKILL.md?raw";
 import type { ParsedSkill, SkillMetadata } from "../../skill/types.js";
 import { skillStorage } from "../storage/skill-storage";
+import { zipSkillDirectory } from "../utils/zip-utils";
 import { skillExecutor } from "./skill-executor";
 import { skillRegistry } from "./skill-registry";
 
@@ -338,6 +339,26 @@ export class SkillManager {
     });
   }
 
+  /**
+   * Package a skill's files back into a ZIP archive for download/sharing.
+   * Accepts a skill id or name.
+   */
+  async exportSkill(
+    skillNameOrId: string,
+  ): Promise<{ filename: string; data: Uint8Array }> {
+    await this.ensureInitialized();
+
+    const metadata = this.getAllSkills().find(
+      (skill) => skill.id === skillNameOrId || skill.name === skillNameOrId,
+    );
+    if (!metadata) {
+      throw new Error(`Skill not found: ${skillNameOrId}`);
+    }
+
+    const data = await zipSkillDirectory(zenfs.getSkillPath(metadata.id));
+    return { filename: `${metadata.name}.zip`, data };
+  }
+
   async enableSkill(skillId: string): Promise<void> {
     if (!this.initialized) {
       throw new Error("SkillManager not initialized");
@@ -618,7 +639,7 @@ export class SkillManager {
         id: skillName,
         name: skillName,
         description:
-          "Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends AIPex's capabilities with specialized knowledge, workflows, or tool integrations.",
+          "Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Eterna's capabilities with specialized knowledge, workflows, or tool integrations.",
         version: "1.0.0",
         uploadedAt: Date.now(),
         enabled: true,

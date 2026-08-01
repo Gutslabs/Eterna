@@ -334,6 +334,11 @@ function RailTrack({
               <div className="rail-step-title">{t("activity.plan")}</div>
               <div className="rail-step-body">{step.text}</div>
             </>
+          ) : step.kind === "browser" ? (
+            <>
+              <div className="rail-step-title">ChatGPT web</div>
+              <div className="rail-step-body">{step.text}</div>
+            </>
           ) : (
             <ToolNodeContent part={step.part} showProgress={isLive} />
           )}
@@ -439,7 +444,7 @@ export const ActivityRail = memo(function ActivityRail({
     }
     if (!active && steps.length > 0) {
       const last = steps[steps.length - 1];
-      if (last?.kind === "thought") {
+      if (last?.kind === "thought" || last?.kind === "browser") {
         active = last;
       }
     }
@@ -462,6 +467,9 @@ export const ActivityRail = memo(function ActivityRail({
           ? `${activeStep.text.slice(0, THOUGHT_SNIPPET_LENGTH - 1)}…`
           : activeStep.text;
       return `${t("activity.thinking")}: ${snippet}`;
+    }
+    if (activeStep?.kind === "browser") {
+      return activeStep.text;
     }
     return `${t("activity.thinking")}…`;
   })();

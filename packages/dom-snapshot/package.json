@@ -6,7 +6,7 @@
   "types": "./dist/src/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AIPexStudio/AIPex.git"
+    "url": "git+https://github.com/Gutslabs/Eterna.git"
   },
   "exports": {
     ".": {
@@ -33,7 +33,7 @@
     "web",
     "browser"
   ],
-  "author": "AIPex Studio",
+  "author": "Gutslabs",
   "license": "MIT",
   "type": "module",
   "devDependencies": {

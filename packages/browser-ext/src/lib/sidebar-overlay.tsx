@@ -22,13 +22,13 @@ const DEFAULT_WIDTH = 400;
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 760;
 const SIDEPANEL_PATH = "src/sidepanel.html";
-const WIDTH_KEY = "aipex-sidebar-width";
+const WIDTH_KEY = "eterna-sidebar-width";
 const PANEL_BG = "#181817";
+const ROOT_STYLE_SNAPSHOT_ATTRIBUTE = "data-eterna-sidebar-root-style";
 // Set by the background SW: true when the browser provides a native side panel
-// (chrome.sidePanel). On those browsers the native panel is the sidebar, so this
-// in-page overlay disables itself and never stacks on top of it. Only browsers
-// without chrome.sidePanel (e.g. Arc) use this overlay.
-const NATIVE_SIDE_PANEL_FLAG = "aipex-native-sidepanel";
+// (chrome.sidePanel). Native browsers use that surface by default; an explicit
+// fallback in-page command can still force this overlay.
+const NATIVE_SIDE_PANEL_FLAG = "eterna-native-sidepanel";
 
 const clampWidth = (value: number) =>
   Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, value));
@@ -42,11 +42,63 @@ interface RootStyleSnapshot {
   transitionPriority: string;
 }
 
+function applyRootStyleSnapshot(
+  root: HTMLElement,
+  snapshot: RootStyleSnapshot,
+): void {
+  const style = root.style;
+  for (const [property, value, priority] of [
+    ["margin-right", snapshot.marginRight, snapshot.marginRightPriority],
+    ["overflow-x", snapshot.overflowX, snapshot.overflowXPriority],
+    ["transition", snapshot.transition, snapshot.transitionPriority],
+  ] as const) {
+    if (value) style.setProperty(property, value, priority);
+    else style.removeProperty(property);
+  }
+  root.removeAttribute(ROOT_STYLE_SNAPSHOT_ATTRIBUTE);
+}
+
+/**
+ * Restore page styles left behind when an older injected React root was
+ * removed without being unmounted. New mounts persist the exact snapshot in a
+ * DOM attribute; the narrow fallback only clears the known legacy style tuple.
+ */
+export function restoreStaleSidebarRootStyles(root: HTMLElement): void {
+  const serialized = root.getAttribute(ROOT_STYLE_SNAPSHOT_ATTRIBUTE);
+  if (serialized) {
+    try {
+      applyRootStyleSnapshot(root, JSON.parse(serialized) as RootStyleSnapshot);
+      return;
+    } catch {
+      root.removeAttribute(ROOT_STYLE_SNAPSHOT_ATTRIBUTE);
+    }
+  }
+
+  const style = root.style;
+  const margin = style.getPropertyValue("margin-right");
+  const overflow = style.getPropertyValue("overflow-x");
+  const transition = style.getPropertyValue("transition");
+  const hasLegacyShift =
+    style.getPropertyPriority("margin-right") === "important" &&
+    /^(?:0|[1-9]\d*)(?:\.\d+)?px$/.test(margin) &&
+    style.getPropertyPriority("overflow-x") === "important" &&
+    ["visible", "clip", "hidden"].includes(overflow) &&
+    style.getPropertyPriority("transition") === "important" &&
+    (transition === "none" ||
+      transition === "margin-right 220ms cubic-bezier(0.22, 1, 0.36, 1)");
+  if (!hasLegacyShift) return;
+
+  style.removeProperty("margin-right");
+  style.removeProperty("overflow-x");
+  style.removeProperty("transition");
+}
+
 export function SidebarApp() {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [resizing, setResizing] = useState(false);
+  const [forceInPage, setForceInPage] = useState(false);
   // null = not yet known. The overlay only renders/restores once we know the
   // browser has NO native side panel (false); where one exists it handles the
   // sidebar and this overlay stays disabled.
@@ -58,19 +110,12 @@ export function SidebarApp() {
   const widthRef = useRef(width);
   const rootStyleSnapshotRef = useRef<RootStyleSnapshot | null>(null);
   widthRef.current = width;
+  const inPageEnabled = nativeSidePanel === false || forceInPage;
 
   const restoreRootStyles = useCallback(() => {
     const snapshot = rootStyleSnapshotRef.current;
     if (!snapshot) return;
-    const style = document.documentElement.style;
-    for (const [property, value, priority] of [
-      ["margin-right", snapshot.marginRight, snapshot.marginRightPriority],
-      ["overflow-x", snapshot.overflowX, snapshot.overflowXPriority],
-      ["transition", snapshot.transition, snapshot.transitionPriority],
-    ] as const) {
-      if (value) style.setProperty(property, value, priority);
-      else style.removeProperty(property);
-    }
+    applyRootStyleSnapshot(document.documentElement, snapshot);
     rootStyleSnapshotRef.current = null;
   }, []);
 
@@ -81,6 +126,7 @@ export function SidebarApp() {
 
   const openPanel = useCallback(() => {
     animateRef.current = true;
+    setForceInPage(true);
     setMounted(true);
     // Mount off-screen first, then slide in on the next frame so the
     // transition runs on the very first open as well.
@@ -98,7 +144,10 @@ export function SidebarApp() {
     setOpen((isOpen) => {
       const next = !isOpen;
       animateRef.current = true;
-      if (next) setMounted(true);
+      if (next) {
+        setForceInPage(true);
+        setMounted(true);
+      }
       persist(next);
       return next;
     });
@@ -144,12 +193,12 @@ export function SidebarApp() {
   }, [nativeSidePanel]);
 
   useEffect(() => {
-    if (nativeSidePanel === false || !mounted) return;
+    if (inPageEnabled || !mounted) return;
     restoreRootStyles();
     setOpen(false);
     setMounted(false);
     persist(false);
-  }, [mounted, nativeSidePanel, persist, restoreRootStyles]);
+  }, [inPageEnabled, mounted, persist, restoreRootStyles]);
 
   useEffect(() => () => restoreRootStyles(), [restoreRootStyles]);
 
@@ -240,7 +289,7 @@ export function SidebarApp() {
   // Close button inside the iframe posts a message up to the host frame.
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (event.data?.type === "aipex-close-sidebar") closePanel();
+      if (event.data?.type === "eterna-close-sidebar") closePanel();
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -279,11 +328,11 @@ export function SidebarApp() {
   // but a transform on an ancestor silently breaks every `position: sticky`
   // descendant (e.g. X's left nav stops scrolling with the page). Shrinking the
   // root's content box with `margin-right` reflows the page without disturbing
-  // sticky/fixed positioning. `overflow-x: clip` trims anything still sized to
-  // the full viewport (`100vw`); unlike `overflow: hidden` it does NOT create a
-  // scroll container, so it leaves `overflow-y: visible` — and sticky — intact.
+  // sticky/fixed positioning. Keep horizontal overflow visible while open:
+  // clipping it on <html> also clips this fixed panel because the panel lives
+  // inside that root.
   useEffect(() => {
-    if (!mounted) return;
+    if (!inPageEnabled || !mounted) return;
     const root = document.documentElement;
     if (!rootStyleSnapshotRef.current) {
       rootStyleSnapshotRef.current = {
@@ -294,6 +343,10 @@ export function SidebarApp() {
         transition: root.style.getPropertyValue("transition"),
         transitionPriority: root.style.getPropertyPriority("transition"),
       };
+      root.setAttribute(
+        ROOT_STYLE_SNAPSHOT_ATTRIBUTE,
+        JSON.stringify(rootStyleSnapshotRef.current),
+      );
     }
     const animate = animateRef.current && !resizing;
     root.style.setProperty(
@@ -304,7 +357,7 @@ export function SidebarApp() {
 
     if (open) {
       root.style.setProperty("margin-right", `${width}px`, "important");
-      root.style.setProperty("overflow-x", "clip", "important");
+      root.style.setProperty("overflow-x", "visible", "important");
       return;
     }
 
@@ -317,11 +370,11 @@ export function SidebarApp() {
       animate ? 240 : 0,
     );
     return () => clearTimeout(timer);
-  }, [open, mounted, width, resizing, restoreRootStyles]);
+  }, [open, mounted, width, resizing, inPageEnabled, restoreRootStyles]);
 
   // A native side panel (or not-yet-known support) means this overlay must not
-  // render — the native panel is the sidebar there.
-  if (nativeSidePanel !== false) return null;
+  // render unless the user explicitly opened the in-page panel.
+  if (!inPageEnabled) return null;
   if (!mounted) return null;
 
   return (

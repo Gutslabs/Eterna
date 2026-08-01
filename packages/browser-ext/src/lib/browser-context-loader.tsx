@@ -23,9 +23,9 @@ export { CURRENT_PAGE_CONTEXT_ID } from "./context-ids";
 
 import { CURRENT_PAGE_CONTEXT_ID } from "./context-ids";
 
-const SELECTION_CONTEXT_PREFIX = "aipex-selection";
-const PENDING_SELECTION_KEY = "aipex-pending-selection";
-const PENDING_CONTEXT_KEY = "aipex-pending-context";
+const SELECTION_CONTEXT_PREFIX = "eterna-selection";
+const PENDING_SELECTION_KEY = "eterna-pending-selection";
+const PENDING_CONTEXT_KEY = "eterna-pending-context";
 // Clean Markdown carries far more signal per char than the old raw-text dump,
 // so a larger budget is still token-reasonable.
 const PAGE_TEXT_LIMIT = 12000;

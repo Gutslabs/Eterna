@@ -11,6 +11,8 @@ export type {
   ChatbotTheme,
   ChatbotThemeVariables,
   ChatConfig,
+  ChatResetOptions,
+  ChatRunDetachOptions,
   ChatStatus,
   ContextItem,
   ContextItemType,
@@ -40,7 +42,6 @@ export type {
 // Individual component exports
 export {
   type AutomationModeValue,
-  BuyTokenPrompt,
   ConfigurationGuide,
   type ConfigurationGuideProps,
   DefaultHeader,

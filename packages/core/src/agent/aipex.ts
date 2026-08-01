@@ -187,7 +187,7 @@ export class AIPex {
         session.setMetadata("lastPromptTokens", metrics.promptTokens);
         await this.conversationManager.saveSession(session);
       } catch (error) {
-        console.warn("[AIPex] Failed to persist session:", error);
+        console.warn("[Eterna] Failed to persist session:", error);
       }
     };
 
@@ -290,7 +290,7 @@ export class AIPex {
               );
               if (functionCalls.length > 0) {
                 console.log(
-                  `[AIPex] response_done contains ${functionCalls.length} function_call(s):`,
+                  `[Eterna] response_done contains ${functionCalls.length} function_call(s):`,
                   functionCalls.map((fc: any) => fc.name),
                 );
               }
@@ -433,7 +433,7 @@ export class AIPex {
 
       if (toolCallsDetectedInRaw > 0 || toolCallsEmittedByRunner > 0) {
         console.log(
-          `[AIPex] Stream complete: ${toolCallsDetectedInRaw} raw tool_call chunks, ` +
+          `[Eterna] Stream complete: ${toolCallsDetectedInRaw} raw tool_call chunks, ` +
             `${toolCallsEmittedByRunner} runner tool_called events`,
         );
       }
@@ -927,7 +927,7 @@ export class AIPex {
       try {
         void plugin.setup?.(this.pluginContext);
       } catch (error) {
-        console.error(`[AIPex] Failed to setup plugin ${plugin.id}:`, error);
+        console.error(`[Eterna] Failed to setup plugin ${plugin.id}:`, error);
       }
     }
   }
@@ -951,7 +951,7 @@ export class AIPex {
           };
         }
       } catch (error) {
-        console.error(`[AIPex] Plugin ${plugin.id} beforeChat failed`, error);
+        console.error(`[Eterna] Plugin ${plugin.id} beforeChat failed`, error);
       }
     }
     return current;
@@ -967,7 +967,7 @@ export class AIPex {
         await hook(payload, this.pluginContext);
       } catch (error) {
         console.error(
-          `[AIPex] Plugin ${plugin.id} afterResponse failed`,
+          `[Eterna] Plugin ${plugin.id} afterResponse failed`,
           error,
         );
       }
@@ -981,7 +981,7 @@ export class AIPex {
       try {
         await hook(payload, this.pluginContext);
       } catch (error) {
-        console.error(`[AIPex] Plugin ${plugin.id} onToolEvent failed`, error);
+        console.error(`[Eterna] Plugin ${plugin.id} onToolEvent failed`, error);
       }
     }
   }
@@ -993,7 +993,7 @@ export class AIPex {
       try {
         await hook(payload, this.pluginContext);
       } catch (error) {
-        console.error(`[AIPex] Plugin ${plugin.id} onMetrics failed`, error);
+        console.error(`[Eterna] Plugin ${plugin.id} onMetrics failed`, error);
       }
     }
   }

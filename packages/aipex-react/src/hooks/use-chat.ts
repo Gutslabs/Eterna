@@ -10,6 +10,8 @@ import { ChatAdapter } from "../adapters/chat-adapter";
 import type {
   ChatbotEventHandlers,
   ChatConfig,
+  ChatResetOptions,
+  ChatRunDetachOptions,
   ChatStatus,
   ContextItem,
   MessageAttachment,
@@ -190,6 +192,14 @@ export interface UseChatReturn {
   status: ChatStatus;
   /** Current session ID */
   sessionId: string | null;
+  /** Transport run currently rendered by this hook, when identified. */
+  activeRunId: string | null;
+  /** Read the active run synchronously for navigation actions. */
+  getActiveRunId: () => string | null;
+  /** Read the adapter's latest messages without waiting for React to commit. */
+  getMessagesSnapshot: () => UIMessage[];
+  /** Detach the active transport synchronously without cancelling its run. */
+  detachActiveRun: (options?: ChatRunDetachOptions) => string | null;
   /** Latest token metrics from the most recent execution */
   metrics: AgentMetrics | null;
   /** Send a new message */
@@ -203,7 +213,7 @@ export interface UseChatReturn {
   /** Interrupt current operation */
   interrupt: () => Promise<void>;
   /** Reset the chat */
-  reset: () => void;
+  reset: (options?: ChatResetOptions) => void;
   /** Regenerate last response */
   regenerate: () => Promise<void>;
   /** Set messages directly */
@@ -215,7 +225,7 @@ export interface UseChatReturn {
    */
   attachExternalTurn: (
     events: AsyncGenerator<AgentEvent>,
-    options?: { userText?: string },
+    options?: { userText?: string; userMessageId?: string },
   ) => Promise<void>;
 }
 
@@ -260,6 +270,7 @@ export function useChat(
   );
   const [status, setStatus] = useState<ChatStatus>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<AgentMetrics | null>(null);
 
   // Refs for stable callbacks
@@ -270,6 +281,7 @@ export function useChat(
   configRef.current = config;
 
   const activeGeneratorRef = useRef<AsyncGenerator<AgentEvent> | null>(null);
+  const activeRunIdRef = useRef<string | null>(null);
   // Bumped by interrupt/reset; runs captured before an await compare against
   // it afterwards so a stopped run can't start its generator anyway.
   const runEpochRef = useRef(0);
@@ -373,10 +385,27 @@ export function useChat(
 
   // Process agent events
   const processAgentEvents = useCallback(
-    async (eventGenerator: AsyncGenerator<AgentEvent>) => {
+    async (
+      eventGenerator: AsyncGenerator<AgentEvent>,
+      epoch = runEpochRef.current,
+    ) => {
       activeGeneratorRef.current = eventGenerator;
+      const identifiedGenerator =
+        eventGenerator as AsyncGenerator<AgentEvent> & {
+          runId?: unknown;
+        };
+      const streamRunId =
+        typeof identifiedGenerator.runId === "string"
+          ? identifiedGenerator.runId
+          : null;
+      activeRunIdRef.current = streamRunId;
+      setActiveRunId(streamRunId);
       try {
         for await (const event of eventGenerator) {
+          if (epoch !== runEpochRef.current) {
+            return;
+          }
+
           // Handle session creation
           if (
             event.type === "session_created" ||
@@ -410,12 +439,17 @@ export function useChat(
           adapter.processEvent(event);
         }
       } catch (error) {
+        if (epoch !== runEpochRef.current) {
+          return;
+        }
         handlersRef.current?.onError?.(error as Error);
         adapter.appendErrorNotice(error);
         adapter.setStatus("error");
       } finally {
         if (activeGeneratorRef.current === eventGenerator) {
           activeGeneratorRef.current = null;
+          activeRunIdRef.current = null;
+          setActiveRunId(null);
         }
       }
     },
@@ -482,7 +516,7 @@ export function useChat(
         contexts: coreContexts.length > 0 ? coreContexts : undefined,
         images: images && images.length > 0 ? images : undefined,
       });
-      await processAgentEvents(events);
+      await processAgentEvents(events, epoch);
     },
     [adapter, agent, sessionId, processAgentEvents],
   );
@@ -512,10 +546,24 @@ export function useChat(
       adapter.setStatus("submitted");
 
       // Continue conversation
+      const epoch = runEpochRef.current;
       const events = agent.chat(text, { sessionId });
-      await processAgentEvents(events);
+      await processAgentEvents(events, epoch);
     },
     [adapter, agent, sessionId, processAgentEvents, sendMessage],
+  );
+
+  const detachActiveRun = useCallback(
+    (options: ChatRunDetachOptions = {}): string | null => {
+      const generator = activeGeneratorRef.current as
+        | (AsyncGenerator<AgentEvent> & {
+            detach?: (detachOptions?: ChatRunDetachOptions) => void;
+          })
+        | null;
+      generator?.detach?.(options);
+      return activeRunIdRef.current;
+    },
+    [],
   );
 
   // Interrupt current operation
@@ -528,6 +576,8 @@ export function useChat(
       await generator.return(undefined);
     }
     activeGeneratorRef.current = null;
+    activeRunIdRef.current = null;
+    setActiveRunId(null);
     // The aborted run never emits execution_complete — drop its turn tracking
     // so the next response can't stream into the interrupted bubble.
     adapter.abortTurn();
@@ -535,23 +585,34 @@ export function useChat(
   }, [adapter]);
 
   // Reset chat
-  const reset = useCallback((): void => {
-    // Stop any in-flight run first — otherwise its generator keeps streaming
-    // into the freshly cleared adapter and the old response "resurrects" as
-    // an orphan bubble in the new chat.
-    runEpochRef.current += 1;
-    const generator = activeGeneratorRef.current;
-    if (generator && typeof generator.return === "function") {
-      void generator.return(undefined);
-    }
-    activeGeneratorRef.current = null;
-    if (sessionId && agent) {
-      void agent.getConversationManager()?.deleteSession(sessionId);
-    }
-    setSessionId(null);
-    setMetrics(null);
-    adapter.reset(configRef.current?.initialMessages ?? []);
-  }, [adapter, agent, sessionId]);
+  const reset = useCallback(
+    (options: ChatResetOptions = {}): void => {
+      // Close this view of the stream before clearing the adapter. Browser
+      // callers can detach the transport first and preserve its backing session.
+      runEpochRef.current += 1;
+      const generator = activeGeneratorRef.current;
+      if (generator && typeof generator.return === "function") {
+        if (options.preserveActiveRun) {
+          (
+            generator as AsyncGenerator<AgentEvent> & {
+              detach?: () => void;
+            }
+          ).detach?.();
+        }
+        void generator.return(undefined);
+      }
+      activeGeneratorRef.current = null;
+      activeRunIdRef.current = null;
+      setActiveRunId(null);
+      if (!options.preserveActiveRun && sessionId && agent) {
+        void agent.getConversationManager()?.deleteSession(sessionId);
+      }
+      setSessionId(null);
+      setMetrics(null);
+      adapter.reset(configRef.current?.initialMessages ?? []);
+    },
+    [adapter, agent, sessionId],
+  );
 
   // Regenerate last response
   const regenerate = useCallback(async (): Promise<void> => {
@@ -603,7 +664,7 @@ export function useChat(
     }
 
     const events = agent.chat(text, { sessionId });
-    await processAgentEvents(events);
+    await processAgentEvents(events, epoch);
   }, [adapter, agent, sessionId, processAgentEvents]);
 
   // Set messages directly
@@ -614,22 +675,47 @@ export function useChat(
     [adapter],
   );
 
+  const getActiveRunId = useCallback(
+    (): string | null => activeRunIdRef.current,
+    [],
+  );
+  const getMessagesSnapshot = useCallback(
+    (): UIMessage[] => adapter.getMessages(),
+    [adapter],
+  );
+
   // Attach an external event stream (e.g. a background run that survived a
   // page reload) as the current turn.
   const attachExternalTurn = useCallback(
     async (
       events: AsyncGenerator<AgentEvent>,
-      options?: { userText?: string },
+      options?: { userText?: string; userMessageId?: string },
     ): Promise<void> => {
       if (isAdapterBusy(adapter)) {
-        await events.return?.(undefined);
+        const detachable = events as AsyncGenerator<AgentEvent> & {
+          detach?: () => void;
+        };
+        if (detachable.detach) {
+          detachable.detach();
+        } else {
+          await events.return?.(undefined);
+        }
         return;
       }
       if (options?.userText) {
-        adapter.addUserMessage(options.userText);
+        adapter.addUserMessage(
+          options.userText,
+          undefined,
+          undefined,
+          options.userMessageId,
+        );
       }
       adapter.setStatus("submitted");
-      await processAgentEvents(events);
+      const epoch = runEpochRef.current;
+      await processAgentEvents(events, epoch);
+      if (epoch !== runEpochRef.current) {
+        return;
+      }
       // Replayed streams of an already-finished run end without an
       // execution_complete-driven status change — settle back to idle.
       if (isAdapterBusy(adapter)) {
@@ -644,6 +730,10 @@ export function useChat(
     messages,
     status,
     sessionId,
+    activeRunId,
+    getActiveRunId,
+    getMessagesSnapshot,
+    detachActiveRun,
     metrics,
     sendMessage,
     continueConversation,

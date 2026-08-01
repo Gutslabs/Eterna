@@ -60,6 +60,14 @@ export class SkillClientAdapter implements SkillClient {
     await skillManager.disableSkill(skillId);
   }
 
+  async exportSkill(
+    skillId: string,
+  ): Promise<{ filename: string; blob: Blob }> {
+    const { filename, data } = await skillManager.exportSkill(skillId);
+    const bytes = new Uint8Array(data);
+    return { filename, blob: new Blob([bytes], { type: "application/zip" }) };
+  }
+
   async deleteSkill(skillId: string): Promise<void> {
     await skillManager.deleteSkill(skillId);
   }

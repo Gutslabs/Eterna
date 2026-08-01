@@ -22,7 +22,7 @@ import {
   countWords,
   type PageBrief,
 } from "./page-brief";
-import { withYoutubeTranscriptChunk } from "./youtube-transcript-feed";
+import { runYoutubeTranscriptQueue } from "./youtube-transcript-feed";
 
 const ACCENT_OK = "#7fae8e";
 
@@ -176,7 +176,7 @@ function ScanStatusLine({
           scanning
             ? {
                 background: "var(--foreground)",
-                animation: "aipex-rail-pulse 1.6s ease-out infinite",
+                animation: "eterna-rail-pulse 1.6s ease-out infinite",
               }
             : { background: ACCENT_OK }
         }
@@ -189,7 +189,7 @@ function ScanStatusLine({
           {(scanMs / 1000).toFixed(1)}s
         </span>
       )}
-      <style>{`@keyframes aipex-rail-pulse {
+      <style>{`@keyframes eterna-rail-pulse {
         0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--foreground) 30%, transparent); }
         70% { box-shadow: 0 0 0 6px transparent; }
         100% { box-shadow: 0 0 0 0 transparent; }
@@ -283,7 +283,7 @@ export function BrowserWelcomeScreen({
 }: WelcomeScreenProps) {
   const { t } = useTranslation();
   const scan = useScannedPage();
-  const { sendMessage, messages } = useChatContext();
+  const { sendMessage } = useChatContext();
 
   // The page-specific prompts are deictic ("Summarize THIS video") — they
   // must carry the page context (and transcript chunk) themselves. The plain
@@ -294,11 +294,14 @@ export function BrowserWelcomeScreen({
       void (async () => {
         const page = await readActivePageContext().catch(() => null);
         const contexts = page ? [page] : undefined;
-        const enriched = await withYoutubeTranscriptChunk(contexts, messages);
-        await sendMessage(text, undefined, enriched);
+        await runYoutubeTranscriptQueue({
+          text,
+          contexts,
+          send: sendMessage,
+        });
       })();
     },
-    [sendMessage, messages],
+    [sendMessage],
   );
 
   // Restricted pages (chrome://, web store, …) keep the generic welcome.

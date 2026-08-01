@@ -58,6 +58,11 @@ export interface SkillClient {
   deleteSkill(skillId: string): Promise<void>;
 
   /**
+   * Package a skill's files into a downloadable ZIP archive
+   */
+  exportSkill(skillId: string): Promise<{ filename: string; blob: Blob }>;
+
+  /**
    * Get detailed skill information
    */
   getSkill(skillNameOrId: string): Promise<SkillDetail | null>;

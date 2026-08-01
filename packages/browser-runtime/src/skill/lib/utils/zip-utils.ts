@@ -3,7 +3,7 @@
  * Handles ZIP extraction and parsing for skill uploads
  */
 
-import { strFromU8, unzipSync } from "fflate";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { zenfs } from "../../../lib/vm/zenfs-manager";
 
 export interface ParsedSkillMetadata {
@@ -285,4 +285,34 @@ export async function getSkillAssets(skillPath: string): Promise<string[]> {
     console.warn(`[ZIP Utils] Failed to read assets directory: ${error}`);
     return [];
   }
+}
+
+/**
+ * Zip an extracted skill directory back into a distributable archive.
+ * Inverse of extractZipToFS — used by skill export.
+ */
+export async function zipSkillDirectory(
+  skillPath: string,
+): Promise<Uint8Array> {
+  const files: Record<string, Uint8Array> = {};
+
+  const walk = async (dir: string, prefix: string): Promise<void> => {
+    for (const entry of await zenfs.readdir(dir)) {
+      const fullPath = `${dir}/${entry}`;
+      const stat = await zenfs.stat(fullPath);
+      if (stat.isDirectory) {
+        await walk(fullPath, `${prefix}${entry}/`);
+      } else {
+        const data = await zenfs.readFile(fullPath);
+        files[`${prefix}${entry}`] =
+          typeof data === "string" ? strToU8(data) : new Uint8Array(data);
+      }
+    }
+  };
+
+  await walk(skillPath, "");
+  if (Object.keys(files).length === 0) {
+    throw new Error(`Skill directory is empty: ${skillPath}`);
+  }
+  return zipSync(files);
 }

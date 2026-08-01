@@ -1,11 +1,14 @@
 /**
  * Static MCP tool schemas for the bridge.
  *
- * These mirror the definitions in src/mcp/tools/unified-tool-definitions.ts
- * but are expressed as plain JSON Schema so the bridge has zero dependency
- * on the extension runtime (no Zod, no Chrome APIs).
+ * These mirror the registered tools in
+ * packages/browser-runtime/src/tools/index.ts (allBrowserTools) but are
+ * expressed as plain JSON Schema so the bridge has zero dependency on the
+ * extension runtime (no Zod, no Chrome APIs).
  *
  * When tools are added/removed in the extension, update this file accordingly.
+ * The sync test at packages/browser-runtime/src/tools/mcp-schema-sync.test.ts
+ * fails if this list drifts from the registered tool set.
  */
 
 export interface ToolSchema {
@@ -79,14 +82,250 @@ export const toolSchemas: ToolSchema[] = [
     },
   },
   {
-    name: "organize_tabs",
-    description: "Use AI to automatically group tabs by topic/purpose",
-    inputSchema: { type: "object", properties: {}, required: [] },
-  },
-  {
     name: "ungroup_tabs",
     description: "Remove all tab groups in the current window",
     inputSchema: { type: "object", properties: {}, required: [] },
+  },
+
+  // ===== Tab Group Tools =====
+  {
+    name: "get_all_tab_groups",
+    description: "Get all tab groups across all windows",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "create_tab_group",
+    description: "Create a new tab group with specified tabs",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tabIds: {
+          type: "array",
+          description: "Array of tab IDs to group",
+          items: { type: "number" },
+        },
+        title: { type: "string", description: "Title for the tab group" },
+        color: {
+          type: "string",
+          enum: [
+            "blue",
+            "red",
+            "yellow",
+            "green",
+            "orange",
+            "purple",
+            "pink",
+            "cyan",
+            "grey",
+          ],
+          description: "Color for the tab group",
+        },
+      },
+      required: ["tabIds"],
+    },
+  },
+  {
+    name: "update_tab_group",
+    description: "Update tab group properties (title, color, collapsed state)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        groupId: {
+          type: "number",
+          description: "ID of the tab group to update",
+        },
+        title: { type: "string", description: "New title for the tab group" },
+        color: {
+          type: "string",
+          enum: [
+            "blue",
+            "red",
+            "yellow",
+            "green",
+            "orange",
+            "purple",
+            "pink",
+            "cyan",
+            "grey",
+          ],
+          description: "New color for the tab group",
+        },
+        collapsed: {
+          type: "boolean",
+          description: "Whether the tab group should be collapsed",
+        },
+      },
+      required: ["groupId"],
+    },
+  },
+  {
+    name: "delete_tab_group",
+    description: "Delete a tab group (ungroups all tabs in the group)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        groupId: {
+          type: "number",
+          description: "ID of the tab group to delete",
+        },
+      },
+      required: ["groupId"],
+    },
+  },
+
+  // ===== Session Tools =====
+  {
+    name: "get_recently_closed",
+    description:
+      "List recently closed tabs and windows with their session IDs, so a specific one can be restored with restore_session.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        maxResults: {
+          type: "number",
+          description:
+            "Maximum number of entries to return (default: all, max 25)",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "restore_session",
+    description:
+      "Reopen a recently closed tab or window. Pass a session ID from get_recently_closed, or omit it to restore the most recently closed entry.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: {
+          type: "string",
+          description:
+            "Session ID from get_recently_closed. Omit to restore the most recently closed tab/window.",
+        },
+      },
+      required: [],
+    },
+  },
+
+  // ===== Bookmark Tools =====
+  {
+    name: "list_bookmarks",
+    description: "Get all bookmarks in a flattened list",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "search_bookmarks",
+    description: "Search bookmarks by title or URL",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "create_bookmark",
+    description: "Create a new bookmark",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Bookmark title" },
+        url: { type: "string", description: "Bookmark URL" },
+        parentId: {
+          type: "string",
+          description: "Parent folder ID (defaults to bookmarks bar)",
+        },
+      },
+      required: ["title", "url"],
+    },
+  },
+  {
+    name: "update_bookmark",
+    description: "Update bookmark properties",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bookmarkId: {
+          type: "string",
+          description: "The bookmark ID to update",
+        },
+        title: { type: "string", description: "New title" },
+        url: { type: "string", description: "New URL" },
+      },
+      required: ["bookmarkId"],
+    },
+  },
+  {
+    name: "delete_bookmark",
+    description: "Delete a bookmark by ID",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bookmarkId: {
+          type: "string",
+          description: "The bookmark ID to delete",
+        },
+      },
+      required: ["bookmarkId"],
+    },
+  },
+  {
+    name: "create_bookmark_folder",
+    description: "Create a new bookmark folder",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Folder title" },
+        parentId: {
+          type: "string",
+          description: "Parent folder ID (defaults to bookmarks bar)",
+        },
+      },
+      required: ["title"],
+    },
+  },
+
+  // ===== History Tools =====
+  {
+    name: "get_recent_history",
+    description: "Get recent browsing history (last 7 days)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "number",
+          description: "Maximum number of history items to return",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "search_history",
+    description: "Search browsing history",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        limit: { type: "number", description: "Maximum number of results" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_most_visited_sites",
+    description: "Get the most visited sites in the last 30 days",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "number",
+          description: "Maximum number of sites to return",
+        },
+      },
+      required: [],
+    },
   },
 
   // ===== UI Tools =====
@@ -236,7 +475,7 @@ This is the PREFERRED first step — much faster and cheaper than screenshots.`,
     description: `Upload a pre-attached file to a file input element (<input type="file">) on the page.
 
 PREREQUISITES:
-- The user must have already attached a file using the attachment button in the AIPex sidebar BEFORE sending the message
+- The user must have already attached a file using the attachment button in the Eterna sidebar BEFORE sending the message
 - The file content is NEVER sent to the AI (privacy guaranteed)
 
 WORKFLOW:
@@ -438,6 +677,147 @@ PREREQUISITE: If you choose coordinate actions, you MUST first call capture_scre
     },
   },
 
+  {
+    name: "get_youtube_transcript",
+    description:
+      "Fetch the full transcript (captions) of the YouTube video in the user's current tab. Use this whenever the user wants to summarize, explain, translate, quote, or ask questions about the YouTube video they are watching. Returns the complete transcript text and video metadata. Only works on a youtube.com/watch, youtu.be, /shorts or /live page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        language: {
+          type: "string",
+          description:
+            "Optional BCP-47 language code (e.g. 'en', 'tr') to prefer a specific caption track. If omitted, the original/manual track is preferred, then auto-generated captions.",
+        },
+        includeTimestamps: {
+          type: "boolean",
+          description:
+            "When true, also return per-line timestamps (segments). Leave false/omitted for summaries to save tokens; set true when the user asks about specific moments or timestamps.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "read_page",
+    description:
+      "Read the main content of the page open in the active tab, as clean Markdown. Use this when you need the full text of the current page — it reads the complete article from the live DOM (works on SPAs too). Long pages come back as a heading outline plus the first chunk; pass `section` (a heading from the outline) or `offset` (from a prior result's nextOffset) to read further. For a link that is NOT currently open, use read_url instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        section: {
+          type: "string",
+          description:
+            "Jump to the section under this heading (match a line from the outline). For long pages only.",
+        },
+        offset: {
+          type: "number",
+          description:
+            "Character offset to continue from — pass a prior result's nextOffset to read the next chunk.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "read_url",
+    description:
+      "Fetch a web page by its URL and return the main content as clean Markdown (with title, author, site and word count when available). Use this to read or summarize a link when it is NOT the page already open in the browser. Handles articles, blog posts, docs, PDFs, GitHub, Reddit and X/Twitter threads; not for pages that require a login.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Absolute http(s) URL of the page to read.",
+        },
+      },
+      required: ["url"],
+    },
+  },
+  {
+    name: "extract_structured_data",
+    description:
+      "Pull specific named fields from a page. Give the fields you want (each with a short hint) and optionally a URL; it returns the page's main content as Markdown plus the list of fields to fill, so you can read off exact values (price, sku, author, date, rating, availability…) instead of eyeballing the whole article. Defaults to the current active tab; pass a URL to target another page. For freeform reading use read_page (current page) or read_url (a link).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        fields: {
+          type: "array",
+          description:
+            "The fields to pull from the page. Each item is an object with 'name' (e.g. 'price') and an optional 'hint' (e.g. 'current price with currency').",
+          items: {
+            type: "object",
+            properties: {
+              name: {
+                type: "string",
+                description: "Field name to extract, e.g. 'price'.",
+              },
+              hint: {
+                type: "string",
+                description:
+                  "What to look for, e.g. 'current price with currency'.",
+              },
+            },
+            required: ["name"],
+          },
+        },
+        url: {
+          type: "string",
+          description: "Page to read; omit to use the current active tab.",
+        },
+      },
+      required: ["fields"],
+    },
+  },
+  {
+    name: "web_search",
+    description:
+      "Search the web in the background and return the top results (title, url, snippet). Does not open a tab or change what the user sees. Use this to find pages, then read them with read_url.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The search query" },
+        limit: {
+          type: "number",
+          description: "Max results to return (default 8, max 20)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+
+  // ===== Memory Tools =====
+  {
+    name: "remember",
+    description:
+      "Save a durable fact about the user or their preferences to long-term memory so you recall it in future conversations. Use it when the user shares a lasting preference or fact, or asks you to remember something. Do NOT save transient or conversation-specific details. Keep each memory to one concise sentence.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        content: {
+          type: "string",
+          description: "The fact to remember, as one concise sentence.",
+        },
+      },
+      required: ["content"],
+    },
+  },
+  {
+    name: "forget",
+    description:
+      "Remove a fact from long-term memory by its id. Use when a saved memory is wrong, outdated, or the user asks you to forget it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "The id of the memory to remove (e.g. 'mem-...').",
+        },
+      },
+      required: ["id"],
+    },
+  },
+
   // ===== Screenshot Tools =====
   {
     name: "capture_screenshot",
@@ -489,35 +869,38 @@ When sendToLLM=true: Sends image to LLM (higher latency/cost) and enables coordi
     },
   },
 
-  // ===== Download Tools =====
   {
-    name: "download_text_as_markdown",
+    name: "capture_screenshot_with_highlight",
     description:
-      "Download text content as a markdown file to the user's local filesystem",
+      "[HIGH-COST] Capture screenshot of the current visible tab, optionally highlighting and cropping to a specific element identified by CSS selector. The screenshot is always sent to the LLM for visual analysis. PREFER search_elements for finding/interacting with elements. Use this only when you need to visually verify element appearance or layout. NOTE: This tool requires focus mode.",
     inputSchema: {
       type: "object",
       properties: {
-        text: {
+        selector: {
           type: "string",
-          description: "The text content to download as markdown",
+          description: "CSS selector of element to highlight/focus on",
         },
-        filename: {
-          type: "string",
-          description:
-            "Descriptive filename for the download (without .md extension)",
-        },
-        folderPath: {
-          type: "string",
-          description: "Optional folder path for organizing downloads",
-        },
-        displayResults: {
+        cropToElement: {
           type: "boolean",
-          description: "Whether to display the download results",
+          description:
+            "Whether to crop the screenshot to the element region (plus padding)",
+        },
+        padding: {
+          type: "number",
+          description:
+            "Padding around element in pixels when cropping (default: 50)",
+        },
+        sendToLLM: {
+          type: "boolean",
+          description:
+            "Whether to send the screenshot to LLM for visual analysis. Defaults to true.",
         },
       },
-      required: ["text"],
+      required: [],
     },
   },
+
+  // ===== Download Tools =====
   {
     name: "download_image",
     description:

@@ -1,12 +1,12 @@
 {
-  "name": "aipex-mcp-bridge",
+  "name": "eterna-mcp-bridge",
   "version": "3.1.0",
-  "description": "MCP bridge that connects AI agents (Cursor, Claude Code, VS Code Copilot, etc.) to the AIPex browser extension. Auto-spawns a shared daemon to support multiple simultaneous clients.",
+  "description": "MCP bridge that connects AI agents (Cursor, Claude Code, VS Code Copilot, etc.) to the Eterna browser extension. Auto-spawns a shared daemon to support multiple simultaneous clients.",
   "type": "module",
   "bin": {
-    "aipex-mcp-bridge": "./dist/bridge.js",
-    "aipex-mcp-daemon": "./dist/daemon.js",
-    "aipex-cli": "./dist/cli.js"
+    "eterna-mcp-bridge": "./dist/bridge.js",
+    "eterna-mcp-daemon": "./dist/daemon.js",
+    "eterna-cli": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -32,7 +32,7 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "aipex",
+    "eterna",
     "browser",
     "cursor",
     "claude",
@@ -43,8 +43,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AIPexStudio/aipex-whole.git",
-    "directory": "aipex/mcp-bridge"
+    "url": "git+https://github.com/Gutslabs/Eterna.git",
+    "directory": "mcp-bridge"
   },
   "engines": {
     "node": ">=18.0.0"

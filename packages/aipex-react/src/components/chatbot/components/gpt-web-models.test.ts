@@ -7,9 +7,12 @@ import {
 } from "./gpt-web-models";
 
 describe("createGptWebModelEntries", () => {
-  it("exposes every current ChatGPT web family at every intelligence level", () => {
+  it("exposes only the current ChatGPT web family at every intelligence level", () => {
     const entries = createGptWebModelEntries();
 
+    expect(new Set(entries.map((entry) => entry.group))).toEqual(
+      new Set(["GPT-5.6 Sol"]),
+    );
     expect(entries).toHaveLength(
       GPT_WEB_MODEL_FAMILIES.length * GPT_WEB_INTELLIGENCE_LEVELS.length,
     );
@@ -34,24 +37,41 @@ describe("createGptWebModelEntries", () => {
     expect(normalizeGptWebModelValue("catgpt-browser::High")).toBe(
       "catgpt-browser::GPT-5.6 Sol|High",
     );
-    expect(normalizeGptWebModelValue("catgpt-browser::GPT-5.3|Medium")).toBe(
-      "catgpt-browser::GPT-5.3|Medium",
-    );
     expect(normalizeGptWebModelValue("catgpt-browser")).toBe(
       "catgpt-browser::GPT-5.6 Sol|Instant",
     );
   });
 
-  it("shows current web metadata without changing gateway values", () => {
+  it("migrates retired families while keeping the chosen intelligence", () => {
+    expect(normalizeGptWebModelValue("catgpt-browser::GPT-5.3|Medium")).toBe(
+      "catgpt-browser::GPT-5.6 Sol|Medium",
+    );
+    expect(normalizeGptWebModelValue("catgpt-browser::GPT-5.5|High")).toBe(
+      "catgpt-browser::GPT-5.6 Sol|High",
+    );
+    expect(normalizeGptWebModelValue("catgpt-browser::o3|High")).toBe(
+      "catgpt-browser::GPT-5.6 Sol|High",
+    );
+  });
+
+  it("leaves models from other providers untouched", () => {
+    expect(normalizeGptWebModelValue("claude-browser::Opus 5|High")).toBe(
+      "claude-browser::Opus 5|High",
+    );
+    expect(normalizeGptWebModelValue("gpt-5.5")).toBe("gpt-5.5");
+  });
+
+  it("marks the default intelligence level", () => {
     const entries = createGptWebModelEntries();
     const instant = entries.find(
       (entry) => entry.value === "catgpt-browser::GPT-5.6 Sol|Instant",
     );
-    const retiring = entries.find(
-      (entry) => entry.value === "catgpt-browser::GPT-5.4|High",
+    const high = entries.find(
+      (entry) => entry.value === "catgpt-browser::GPT-5.6 Sol|High",
     );
 
-    expect(instant?.optionDescription).toBe("5.5");
-    expect(retiring?.groupDescription).toBe("Leaving on July 23");
+    expect(instant?.optionDescription).toBe("Default");
+    expect(instant?.groupDescription).toBe("ChatGPT web");
+    expect(high?.optionDescription).toBeUndefined();
   });
 });

@@ -26,6 +26,21 @@ export interface ChatConfig {
   initialMessages?: UIMessage[];
 }
 
+export interface ChatResetOptions {
+  /**
+   * Clear this UI without deleting the session behind its active stream.
+   * The caller must first detach transports that normally treat generator
+   * closure as cancellation.
+   */
+  preserveActiveRun?: boolean;
+}
+
+export interface ChatRunDetachOptions {
+  conversationId?: string;
+  persistencePending?: boolean;
+  userMessageId?: string;
+}
+
 // ============ Component Props Types ============
 
 export interface MessageListProps
@@ -70,7 +85,7 @@ export interface WelcomeScreenProps extends HTMLAttributes<HTMLDivElement> {
 export interface HeaderProps extends HTMLAttributes<HTMLDivElement> {
   title?: string;
   onSettingsClick?: () => void;
-  onNewChat?: () => void;
+  onNewChat?: (options?: ChatResetOptions) => void;
 }
 
 export interface FooterProps extends HTMLAttributes<HTMLDivElement> {

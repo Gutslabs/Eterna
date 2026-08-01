@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <title>Eterna app icon</title>
+  <g
+    fill="none"
+    stroke="#ff5a36"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    transform="translate(4)"
+  >
+    <path d="M72 25H45C31.2 25 20 36.2 20 50s11.2 25 25 25h27" stroke-width="9" />
+    <path d="M42 50h28" stroke-width="9" />
+    <path d="M72 25 61 34M72 75 61 66" stroke-width="4" />
+  </g>
+</svg>

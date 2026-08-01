@@ -549,6 +549,96 @@ describe("useChat", () => {
     expect(result.current.metrics).toBeNull();
   });
 
+  it("preserves a detached run while isolating its late events from the new chat", async () => {
+    const { agent, conversationManager } = setupMockAgent();
+    let oldStep = 0;
+    let resolveOldEvent:
+      | ((result: IteratorResult<AgentEvent>) => void)
+      | undefined;
+    const oldStream = Object.assign(
+      {
+        async next(): Promise<IteratorResult<AgentEvent>> {
+          if (oldStep === 0) {
+            oldStep += 1;
+            return {
+              done: false,
+              value: {
+                type: "session_created",
+                sessionId: "old-session",
+              },
+            };
+          }
+          return await new Promise<IteratorResult<AgentEvent>>((resolve) => {
+            resolveOldEvent = resolve;
+          });
+        },
+        return: vi.fn(
+          async () =>
+            ({
+              done: true,
+              value: undefined,
+            }) as IteratorReturnResult<undefined>,
+        ),
+        async throw(error: unknown) {
+          throw error;
+        },
+        [Symbol.asyncIterator]() {
+          return this;
+        },
+        async [Symbol.asyncDispose]() {},
+      } satisfies AsyncGenerator<AgentEvent>,
+      { runId: "run-old" },
+    );
+    const newStream = Object.assign(
+      createEventGenerator([
+        { type: "session_created", sessionId: "new-session" },
+        { type: "content_delta", delta: "new answer" },
+        createExecutionCompleteEvent(),
+      ]),
+      { runId: "run-new" },
+    );
+    (agent.chat as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce(oldStream)
+      .mockReturnValueOnce(newStream);
+
+    const { result } = await renderUseChat(agent);
+    let oldSend: Promise<void> | undefined;
+    act(() => {
+      oldSend = result.current.sendMessage("old question");
+    });
+    await vi.waitFor(() => {
+      expect(result.current.activeRunId).toBe("run-old");
+      expect(result.current.sessionId).toBe("old-session");
+    });
+
+    act(() => {
+      result.current.reset({ preserveActiveRun: true });
+    });
+    expect(conversationManager.deleteSession).not.toHaveBeenCalled();
+    expect(result.current.messages).toEqual([]);
+    expect(result.current.activeRunId).toBeNull();
+
+    await act(async () => {
+      await result.current.sendMessage("new question");
+    });
+    expect(JSON.stringify(result.current.messages)).toContain("new answer");
+    expect(JSON.stringify(result.current.messages)).not.toContain(
+      "old question",
+    );
+
+    await act(async () => {
+      resolveOldEvent?.({
+        done: false,
+        value: { type: "content_delta", delta: "late old answer" },
+      });
+      await oldSend;
+    });
+    expect(JSON.stringify(result.current.messages)).not.toContain(
+      "late old answer",
+    );
+    expect(result.current.sessionId).toBe("new-session");
+  });
+
   describe("attachExternalTurn", () => {
     it("rebuilds a turn from an external event stream without an agent", async () => {
       const { result } = renderHook(() => useChat(undefined));
@@ -561,13 +651,17 @@ describe("useChat", () => {
             { type: "content_delta", delta: "answer" },
             createExecutionCompleteEvent(),
           ]),
-          { userText: "original question" },
+          {
+            userText: "original question",
+            userMessageId: "original-user",
+          },
         );
       });
 
       const messages = result.current.messages;
       expect(messages).toHaveLength(2);
       expect(messages[0]).toMatchObject({ role: "user" });
+      expect(messages[0]?.id).toBe("original-user");
       expect(messages[0]?.parts[0]).toMatchObject({
         type: "text",
         text: "original question",

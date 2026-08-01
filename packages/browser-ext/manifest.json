@@ -49,19 +49,7 @@
       "matches": ["<all_urls>"]
     }
   ],
-  "externally_connectable": {
-    "matches": ["https://www.claudechrome.com/*", "https://claudechrome.com/*"]
-  },
   "host_permissions": ["<all_urls>"],
-  "commands": {
-    "open-aipex": {
-      "suggested_key": {
-        "default": "Ctrl+M",
-        "mac": "Command+M"
-      },
-      "description": "Open command menu"
-    }
-  },
   "permissions": [
     "tabs",
     "windows",
@@ -75,9 +63,9 @@
     "contextMenus",
     "sessions",
     "sidePanel",
+    "nativeMessaging",
     "downloads",
     "debugger",
-    "cookies",
     "webNavigation",
     "alarms"
   ]

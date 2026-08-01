@@ -4,6 +4,9 @@
  */
 
 import { initBackgroundChatHost } from "./lib/chat-host-init";
+import { supportsNativeSidePanel } from "./lib/native-side-panel";
+import { writePendingAutosend } from "./lib/pending-autosend";
+import { launchEternaInTerminal } from "./lib/terminal-launcher";
 import {
   buildAuthorizeUrl,
   clearStoredAuth,
@@ -64,7 +67,7 @@ async function ensureContentScript(tabId: number): Promise<boolean> {
 async function openSidebarAfterInject(tabId: number): Promise<void> {
   for (let attempt = 0; attempt < 12; attempt++) {
     try {
-      await chrome.tabs.sendMessage(tabId, { request: "open-aipex-sidebar" });
+      await chrome.tabs.sendMessage(tabId, { request: "open-eterna-sidebar" });
       return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 60));
@@ -75,7 +78,10 @@ async function openSidebarAfterInject(tabId: number): Promise<void> {
 // Prefer the in-page docked sidebar (works on every Chromium browser and has no
 // window chrome). If the active tab has no content script yet, inject it and
 // open the in-page panel — only truly restricted pages fall back to a window.
-async function openOrToggleSidebar(tab?: chrome.tabs.Tab) {
+async function controlInPageSidebar(
+  command: "open" | "toggle",
+  tab?: chrome.tabs.Tab,
+) {
   let targetTab = tab;
   if (targetTab?.id === undefined) {
     const [active] = await chrome.tabs.query({
@@ -88,7 +94,9 @@ async function openOrToggleSidebar(tab?: chrome.tabs.Tab) {
   const tabId = targetTab?.id;
   if (tabId !== undefined) {
     try {
-      await chrome.tabs.sendMessage(tabId, { request: "toggle-aipex-sidebar" });
+      await chrome.tabs.sendMessage(tabId, {
+        request: `${command}-eterna-sidebar`,
+      });
       return;
     } catch {
       // No content script yet (the tab was open before the extension loaded,
@@ -106,14 +114,23 @@ async function openOrToggleSidebar(tab?: chrome.tabs.Tab) {
   await openPanelTab();
 }
 
-// Open AIPex from a user gesture (toolbar icon, keyboard command). Prefer the
-// browser-native side panel: it docks at the true window edge and spans the
-// full height to the very top of the window — which an in-page overlay, bounded
-// by the web viewport (always below the browser toolbar), cannot reach. Only
-// browsers without chrome.sidePanel (e.g. Arc, Dia) fall back to the in-page
-// docked sidebar.
+async function openOrToggleSidebar(tab?: chrome.tabs.Tab) {
+  await controlInPageSidebar("toggle", tab);
+}
+
+async function openInPageSidebar(tab?: chrome.tabs.Tab) {
+  await controlInPageSidebar("open", tab);
+}
+
+// Open Eterna from a user gesture (toolbar icon, keyboard shortcut). Prefer
+// the browser-native side panel: it docks at the true window edge and spans
+// the full height to the very top of the window — which an in-page overlay,
+// bounded by the web viewport (always below the browser toolbar), cannot
+// reach. If the native panel refuses to open (some Chromium forks drop the
+// user-gesture attribution on relayed calls), fall back to the in-page
+// sidebar — a differently docked panel beats nothing happening at all.
 async function openSidebar(tab?: chrome.tabs.Tab) {
-  if (chrome.sidePanel?.open) {
+  if (supportsNativeSidePanel(chrome.sidePanel)) {
     try {
       if (tab?.id !== undefined) {
         await chrome.sidePanel.open({ tabId: tab.id });
@@ -125,13 +142,61 @@ async function openSidebar(tab?: chrome.tabs.Tab) {
       }
       return;
     } catch (error) {
-      console.warn(
-        "[AIPex] sidePanel.open failed, falling back to in-page sidebar:",
+      console.error(
+        "[Eterna] Native side panel open failed, using the in-page sidebar:",
         error,
       );
     }
   }
-  await openOrToggleSidebar(tab);
+  await openInPageSidebar(tab);
+}
+
+// Live chat surfaces (native panel, overlay iframe, fallback tab) keyed by
+// the window they belong to. Each surface connects the "sidepanel" port and
+// reports its window, which is what lets Cmd+E toggle: a second press finds
+// the open surface here and asks it to close itself — the only reliable close,
+// since chrome.sidePanel has no close() and no gesture is needed for it.
+const sidepanelPortsByWindow = new Map<number, Set<chrome.runtime.Port>>();
+
+function registerSidepanelPort(port: chrome.runtime.Port, windowId: number) {
+  let ports = sidepanelPortsByWindow.get(windowId);
+  if (!ports) {
+    ports = new Set();
+    sidepanelPortsByWindow.set(windowId, ports);
+  }
+  ports.add(port);
+}
+
+function unregisterSidepanelPort(port: chrome.runtime.Port, windowId: number) {
+  const ports = sidepanelPortsByWindow.get(windowId);
+  if (!ports) return;
+  ports.delete(port);
+  if (ports.size === 0) sidepanelPortsByWindow.delete(windowId);
+}
+
+// Cmd+E semantics: close the chat surface open in this window, else open one.
+async function toggleSidebar(tab?: chrome.tabs.Tab) {
+  let windowId = tab?.windowId;
+  if (windowId === undefined) {
+    try {
+      windowId = (await chrome.windows.getCurrent()).id;
+    } catch {
+      /* fall through to open */
+    }
+  }
+  const ports =
+    windowId === undefined ? undefined : sidepanelPortsByWindow.get(windowId);
+  if (ports?.size) {
+    for (const port of ports) {
+      try {
+        port.postMessage({ request: "close-sidepanel" });
+      } catch {
+        /* port already gone */
+      }
+    }
+    return;
+  }
+  await openSidebar(tab);
 }
 
 // After an install/update, re-inject the content script into already-open tabs
@@ -163,11 +228,11 @@ async function injectIntoOpenTabs() {
 // viewport, always below the browser toolbar) can never do. The onClicked
 // listener then does NOTHING on Chromium; it only drives the in-page overlay on
 // browsers that don't expose chrome.sidePanel.
-const NATIVE_SIDE_PANEL_FLAG = "aipex-native-sidepanel";
+const NATIVE_SIDE_PANEL_FLAG = "eterna-native-sidepanel";
 
 async function configureSidePanel() {
   const sidePanel = chrome.sidePanel;
-  const supported = Boolean(sidePanel?.setPanelBehavior);
+  const supported = supportsNativeSidePanel(sidePanel);
   // Tell the content-script overlay whether a native panel will handle the
   // sidebar, so it disables itself and never stacks on top of the native panel.
   try {
@@ -175,17 +240,17 @@ async function configureSidePanel() {
   } catch {
     /* storage may be unavailable */
   }
-  if (!sidePanel?.setPanelBehavior) return;
+  if (!supported) return;
   try {
     // No browser-action popup, so the icon click opens the side panel.
     await chrome.action.setPopup({ popup: "" });
   } catch (error) {
-    console.warn("[AIPex] setPopup failed:", error);
+    console.warn("[Eterna] setPopup failed:", error);
   }
   try {
     await sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   } catch (error) {
-    console.warn("[AIPex] setPanelBehavior failed:", error);
+    console.warn("[Eterna] setPanelBehavior failed:", error);
   }
 }
 
@@ -198,9 +263,9 @@ chrome.action.onClicked.addListener((tab) => {
   // On Chromium the native side panel is opened by setPanelBehavior above (and
   // onClicked won't even fire there). This only runs on browsers without
   // chrome.sidePanel, where the in-page overlay is the sidebar.
-  if (chrome.sidePanel) return;
+  if (supportsNativeSidePanel(chrome.sidePanel)) return;
   openOrToggleSidebar(tab).catch((error) => {
-    console.error("[AIPex] Failed to open:", error);
+    console.error("[Eterna] Failed to open:", error);
   });
 });
 
@@ -328,12 +393,63 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false;
 });
 
-// Listen for keyboard command to open AIPex
-chrome.commands.onCommand.addListener((command) => {
-  if (command === "open-aipex") {
-    openSidebar().catch((error) => {
-      console.error("[AIPex] Failed to toggle sidebar:", error);
+// Cmd+E is deliberately NOT bound at the browser level. A browser-level
+// "_execute_action" binding consumes the chord before any page or panel sees
+// it, and some Chromium forks (Dia) only ever OPEN from it — a second press
+// can never close the panel. The toggle lives in the in-page catcher plus the
+// panel's own catcher instead, so warn if a leftover binding would shadow it.
+async function auditActionShortcut() {
+  try {
+    const commands = await chrome.commands.getAll();
+    const action = commands.find((c) => c.name === "_execute_action");
+    if (action?.shortcut) {
+      console.warn(
+        `[Eterna] "${action.shortcut}" is bound to the toolbar action at the`,
+        "browser level. It can only open the panel, never close it, and it",
+        "shadows the in-page Cmd+E toggle — clear it in the extension",
+        "shortcut settings.",
+      );
+    }
+  } catch {
+    /* commands API unavailable on this browser */
+  }
+}
+
+void auditActionShortcut();
+
+// =============================================================================
+// Context menus
+// =============================================================================
+const MENU_ASK_SELECTION = "eterna-ask-selection";
+const MENU_OPEN_PANEL = "eterna-open-panel";
+
+function registerContextMenus() {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: MENU_ASK_SELECTION,
+      title: 'Ask Eterna about "%s"',
+      contexts: ["selection"],
     });
+    chrome.contextMenus.create({
+      id: MENU_OPEN_PANEL,
+      title: "Open Eterna",
+      contexts: ["page"],
+    });
+  });
+}
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === MENU_ASK_SELECTION) {
+    const text = info.selectionText?.trim();
+    if (!text) return;
+    // Same hand-off as the in-page "Ask Eterna" selection bar: stash the text,
+    // open this tab's panel, and SelectionAutoSend submits it.
+    writePendingAutosend(text).catch(() => {});
+    void controlInPageSidebar("open", tab);
+    return;
+  }
+  if (info.menuItemId === MENU_OPEN_PANEL) {
+    void controlInPageSidebar("open", tab);
   }
 });
 
@@ -343,20 +459,19 @@ chrome.runtime.onInstalled.addListener((details) => {
   // install/update, alongside the top-level + onStartup calls.
   void configureSidePanel();
 
+  // Context menus persist per install; re-register on install/update so the
+  // set always matches this version.
+  registerContextMenus();
+
   // Make the in-page sidebar available in tabs that were already open, so they
   // don't fall back to a popup window on the first click after a reload/update.
   void injectIntoOpenTabs();
 
   if (details.reason === "install") {
-    console.log("AIPex extension installed");
-
-    // Open onboarding page for new installs in production
-    if (import.meta.env.PROD) {
-      chrome.tabs.create({ url: "https://www.claudechrome.com" });
-    }
+    console.log("Eterna extension installed");
   } else if (details.reason === "update") {
     console.log(
-      "AIPex extension updated to version",
+      "Eterna extension updated to version",
       chrome.runtime.getManifest().version,
     );
   }
@@ -370,7 +485,24 @@ let isRecording = false;
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === "sidepanel") {
+    let portWindowId: number | undefined;
+    port.onMessage.addListener((message: unknown) => {
+      const msg = message as { request?: string; windowId?: unknown };
+      if (
+        msg?.request === "sidepanel-window" &&
+        typeof msg.windowId === "number"
+      ) {
+        if (portWindowId !== undefined) {
+          unregisterSidepanelPort(port, portWindowId);
+        }
+        portWindowId = msg.windowId;
+        registerSidepanelPort(port, portWindowId);
+      }
+    });
     port.onDisconnect.addListener(() => {
+      if (portWindowId !== undefined) {
+        unregisterSidepanelPort(port, portWindowId);
+      }
       // When sidepanel closes, stop capture on all tabs if recording was active
       if (isRecording) {
         isRecording = false;
@@ -394,6 +526,11 @@ chrome.runtime.onConnect.addListener((port) => {
 // Internal message router
 // =============================================================================
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.request === "launch-eterna-terminal") {
+    launchEternaInTerminal().then(sendResponse);
+    return true;
+  }
+
   // Echo capture events to all extension contexts
   if (message.request === "capture-click-event") {
     try {
@@ -451,26 +588,30 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   // Open sidepanel on demand (e.g. from content script)
-  if (message.request === "open-sidepanel") {
-    (async () => {
-      try {
-        const tabId = _sender.tab?.id;
-        if (tabId) {
-          await chrome.sidePanel.open({ tabId });
-        } else {
-          const window = await chrome.windows.getCurrent();
-          if (window.id) {
-            await chrome.sidePanel.open({ windowId: window.id });
-          }
-        }
-        sendResponse({ success: true });
-      } catch (error) {
+  if (message.request === "open-in-page-sidebar") {
+    openInPageSidebar(_sender.tab)
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => {
         sendResponse({
           success: false,
           error: error instanceof Error ? error.message : String(error),
         });
-      }
-    })();
+      });
+    return true;
+  }
+
+  if (
+    message.request === "toggle-sidepanel" ||
+    message.request === "open-sidepanel"
+  ) {
+    toggleSidebar(_sender.tab)
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     return true;
   }
 
@@ -784,190 +925,6 @@ async function downloadChatImagesInBackground(
 };
 
 // =============================================================================
-// External Message Listener - Website Integration
-// =============================================================================
-// Re-check sender.origin in code against the same explicit production
-// allowlist as the manifest so privileged actions have defense in depth.
-const TRUSTED_EXTERNAL_ORIGINS = new Set([
-  "https://www.claudechrome.com",
-  "https://claudechrome.com",
-]);
-
-function isTrustedExternalSender(
-  sender: chrome.runtime.MessageSender,
-): boolean {
-  const origin = sender.origin ?? "";
-  return TRUSTED_EXTERNAL_ORIGINS.has(origin);
-}
-
-chrome.runtime.onMessageExternal.addListener(
-  (message, sender, sendResponse) => {
-    if (!isTrustedExternalSender(sender)) {
-      sendResponse({ success: false, error: "Unauthorized origin" });
-      return true;
-    }
-
-    // Handle "openWithPrompt" action from website
-    if (message.action === "openWithPrompt") {
-      const prompt = message.prompt;
-
-      if (!prompt || typeof prompt !== "string") {
-        sendResponse({ success: false, error: "Invalid prompt" });
-        return true;
-      }
-
-      // Save prompt to chrome.storage.local with timestamp
-      chrome.storage.local.set(
-        {
-          "aipex-pending-prompt": prompt,
-          "aipex-pending-prompt-timestamp": Date.now(),
-        },
-        () => {
-          if (chrome.runtime.lastError) {
-            sendResponse({
-              success: false,
-              error: chrome.runtime.lastError.message,
-            });
-            return;
-          }
-
-          // Open sidepanel
-          const windowId = sender.tab?.windowId;
-
-          if (!windowId) {
-            chrome.windows
-              .getCurrent()
-              .then((window) => {
-                if (window.id) {
-                  return chrome.sidePanel.open({ windowId: window.id });
-                }
-                throw new Error("No window ID available");
-              })
-              .then(() => {
-                sendResponse({ success: true });
-              })
-              .catch((error) => {
-                sendResponse({ success: false, error: error.message });
-              });
-          } else {
-            chrome.sidePanel
-              .open({ windowId })
-              .then(() => {
-                sendResponse({ success: true });
-              })
-              .catch((error) => {
-                sendResponse({ success: false, error: error.message });
-              });
-          }
-        },
-      );
-
-      return true; // Keep message channel open for async response
-    }
-
-    // Handle user manual replay request from website
-    if (message.request === "REPLAY_USER_MANUAL") {
-      const { manualId, startFromStep, steps } = message as {
-        manualId?: unknown;
-        startFromStep?: unknown;
-        steps?: unknown;
-      };
-
-      // Validate required fields
-      if (
-        typeof manualId !== "number" ||
-        !Array.isArray(steps) ||
-        steps.length === 0
-      ) {
-        sendResponse({
-          success: false,
-          error:
-            "Invalid replay data: manualId (number) and non-empty steps (array) are required",
-        });
-        return true;
-      }
-
-      // Validate step entries have required shape and bounded size
-      const MAX_STEPS = 500;
-      if (steps.length > MAX_STEPS) {
-        sendResponse({
-          success: false,
-          error: `Too many replay steps (max ${MAX_STEPS})`,
-        });
-        return true;
-      }
-
-      const ALLOWED_EVENT_TYPES = ["click", "navigation"];
-      const stepsValid = steps.every((s: unknown) => {
-        if (s === null || typeof s !== "object") return false;
-        const rec = s as Record<string, unknown>;
-        if (!rec.event || typeof rec.event !== "object") return false;
-        const event = rec.event as Record<string, unknown>;
-        return (
-          typeof event.type === "string" &&
-          ALLOWED_EVENT_TYPES.includes(event.type)
-        );
-      });
-
-      if (!stepsValid) {
-        sendResponse({
-          success: false,
-          error:
-            "Invalid replay steps: each step must contain an event with type 'click' or 'navigation'",
-        });
-        return true;
-      }
-
-      const resolvedStartFromStep =
-        typeof startFromStep === "number" && startFromStep >= 0
-          ? startFromStep
-          : 0;
-
-      // Open sidepanel then forward replay data
-      const windowId = sender.tab?.windowId;
-
-      if (!windowId) {
-        sendResponse({ success: false, error: "No window ID available" });
-        return true;
-      }
-
-      chrome.sidePanel
-        .open({ windowId })
-        .then(() => {
-          // Wait for sidepanel to initialize before forwarding
-          setTimeout(() => {
-            chrome.runtime
-              .sendMessage({
-                request: "NAVIGATE_AND_SETUP_REPLAY",
-                data: {
-                  manualId,
-                  startFromStep: resolvedStartFromStep,
-                  steps,
-                },
-              })
-              .catch(() => {
-                // Sidepanel may not yet have a listener – acceptable race
-              });
-          }, 500);
-
-          sendResponse({ success: true });
-        })
-        .catch((error) => {
-          sendResponse({
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        });
-
-      return true;
-    }
-
-    sendResponse({ success: false, error: "Unknown action" });
-    return true;
-  },
-);
-
-// =============================================================================
 // WebSocket MCP Bridge
 //
 // Loaded lazily: wsMcpServer pulls in the full browser tool runtime (~1MB),
@@ -1091,4 +1048,4 @@ chrome.storage.local
     // Ignore storage errors on startup
   });
 
-console.log("AIPex background service worker started");
+console.log("Eterna background service worker started");

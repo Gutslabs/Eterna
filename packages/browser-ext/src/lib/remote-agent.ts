@@ -34,6 +34,10 @@ const defaultConnector: Connector = () =>
   chrome.runtime.connect({ name: CHAT_PORT_NAME }) as unknown as ClientPortLike;
 
 const CLIENT_ID_KEY = "eterna-chat-client-id";
+const GATEWAY_ROUTE_ID_KEY = "eterna-gateway-route-id";
+const GATEWAY_CONVERSATION_ROUTES_KEY = "eterna-gateway-conversation-routes";
+const MAX_SAVED_GATEWAY_ROUTES = 100;
+const inMemoryConversationRoutes = new Map<string, string>();
 
 function createClientId(): string {
   try {
@@ -44,6 +48,73 @@ function createClientId(): string {
     return id;
   } catch {
     return crypto.randomUUID();
+  }
+}
+
+function newGatewayRouteId(): string {
+  return `route-${crypto.randomUUID()}`;
+}
+
+function createGatewayRouteId(): string {
+  try {
+    const existing = globalThis.sessionStorage?.getItem(GATEWAY_ROUTE_ID_KEY);
+    if (existing) return existing;
+    const routeId = newGatewayRouteId();
+    globalThis.sessionStorage?.setItem(GATEWAY_ROUTE_ID_KEY, routeId);
+    return routeId;
+  } catch {
+    return newGatewayRouteId();
+  }
+}
+
+function saveCurrentGatewayRouteId(routeId: string): void {
+  try {
+    globalThis.sessionStorage?.setItem(GATEWAY_ROUTE_ID_KEY, routeId);
+  } catch {
+    // The in-memory route still keeps this page correct.
+  }
+}
+
+function readConversationRoutes(): Record<string, string> {
+  const fallback = Object.fromEntries(inMemoryConversationRoutes);
+  try {
+    const raw = globalThis.localStorage?.getItem(
+      GATEWAY_CONVERSATION_ROUTES_KEY,
+    );
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      ...Object.fromEntries(
+        Object.entries(parsed).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+      ...fallback,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveConversationRoute(conversationId: string, routeId: string): void {
+  inMemoryConversationRoutes.delete(conversationId);
+  inMemoryConversationRoutes.set(conversationId, routeId);
+  while (inMemoryConversationRoutes.size > MAX_SAVED_GATEWAY_ROUTES) {
+    const oldestConversationId = inMemoryConversationRoutes.keys().next().value;
+    if (oldestConversationId === undefined) break;
+    inMemoryConversationRoutes.delete(oldestConversationId);
+  }
+  try {
+    const routes = readConversationRoutes();
+    delete routes[conversationId];
+    routes[conversationId] = routeId;
+    const entries = Object.entries(routes).slice(-MAX_SAVED_GATEWAY_ROUTES);
+    globalThis.localStorage?.setItem(
+      GATEWAY_CONVERSATION_ROUTES_KEY,
+      JSON.stringify(Object.fromEntries(entries)),
+    );
+  } catch {
+    // Conversation routing remains available for the current page.
   }
 }
 
@@ -77,20 +148,38 @@ type StreamItem =
   | { kind: "done" }
   | { kind: "failed"; error: Error };
 
+interface StreamControl {
+  suppressInterrupt: boolean;
+}
+
+export interface RunDetachOptions {
+  conversationId?: string;
+  persistencePending?: boolean;
+  userMessageId?: string;
+}
+
+export type RunEventStream = AsyncGenerator<AgentEvent> & {
+  readonly runId: string;
+  detach(options?: RunDetachOptions): void;
+};
+
 export interface ActiveRunAttachment {
   runId: string;
   userText: string;
+  userMessageId: string | null;
   conversationId: string | null;
   sessionId: string | null;
   done: boolean;
   /** True when the run finished while no UI was attached. */
   completedDetached: boolean;
   truncated: boolean;
+  /** Stop observing this run while allowing it to continue host-side. */
+  detach(options?: RunDetachOptions): void;
   /**
    * Whole-turn event stream: buffered events first, then live ones until the
    * turn finishes. Feed it to attachExternalTurn to rebuild + continue.
    */
-  events: AsyncGenerator<AgentEvent>;
+  events: RunEventStream;
 }
 
 export class RemoteBrowserAgent {
@@ -106,19 +195,67 @@ export class RemoteBrowserAgent {
   >();
   private nextId = 0;
   private lastRunId: string | null = null;
+  private readonly streamControls = new Map<string, Set<StreamControl>>();
   private readonly clientId: string;
+  private gatewayRouteId: string;
+  private readonly runRouteIds = new Map<string, string>();
 
   constructor(
     connector: Connector = defaultConnector,
     clientId = createClientId(),
+    gatewayRouteId = createGatewayRouteId(),
   ) {
     this.connector = connector;
     this.clientId = clientId;
+    this.gatewayRouteId = gatewayRouteId;
   }
 
   private newId(prefix: string): string {
     this.nextId += 1;
     return `${prefix}_${Date.now().toString(36)}_${this.nextId}`;
+  }
+
+  private registerStream(runId: string): StreamControl {
+    const control = { suppressInterrupt: false };
+    const controls = this.streamControls.get(runId) ?? new Set<StreamControl>();
+    controls.add(control);
+    this.streamControls.set(runId, controls);
+    return control;
+  }
+
+  private unregisterStream(runId: string, control: StreamControl): void {
+    const controls = this.streamControls.get(runId);
+    if (!controls) return;
+    controls.delete(control);
+    if (controls.size === 0) {
+      this.streamControls.delete(runId);
+    }
+  }
+
+  private suppressStreamInterrupts(runId: string): void {
+    for (const control of this.streamControls.get(runId) ?? []) {
+      control.suppressInterrupt = true;
+    }
+  }
+
+  private sendDetach(
+    runId: string,
+    consumerId: string,
+    options: RunDetachOptions = {},
+  ): void {
+    try {
+      this.ensurePort().postMessage({
+        type: "detach",
+        clientId: this.clientId,
+        runId,
+        consumerId,
+        conversationId: options.conversationId,
+        persistencePending: options.persistencePending,
+        userMessageId: options.userMessageId,
+      });
+    } catch {
+      // Host gone; local stream cleanup still proceeds.
+    }
   }
 
   private ensurePort(): ClientPortLike {
@@ -185,9 +322,18 @@ export class RemoteBrowserAgent {
    * Stream a turn through the background host. Mirrors AIPex.chat:
    * generator.return() interrupts the run host-side.
    */
-  chat(text: string, options?: ChatOptions): AsyncGenerator<AgentEvent> {
+  chat(text: string, options?: ChatOptions): RunEventStream {
     const runId = this.newId("run");
+    const routeId = this.gatewayRouteId;
     this.lastRunId = runId;
+    this.runRouteIds.set(runId, routeId);
+    if (this.runRouteIds.size > MAX_SAVED_GATEWAY_ROUTES) {
+      const oldestRunId = this.runRouteIds.keys().next().value;
+      if (oldestRunId !== undefined) {
+        this.runRouteIds.delete(oldestRunId);
+      }
+    }
+    const streamControl = this.registerStream(runId);
     const queue = new AsyncEventQueue<StreamItem>();
     let finished = false;
 
@@ -239,6 +385,7 @@ export class RemoteBrowserAgent {
       text,
       options: {
         sessionId: options?.sessionId,
+        routeId,
         contexts: options?.contexts as unknown[] | undefined,
         images: options?.images,
       },
@@ -249,7 +396,7 @@ export class RemoteBrowserAgent {
     };
 
     const agent = this;
-    return (async function* remoteChat(): AsyncGenerator<AgentEvent> {
+    const stream = (async function* remoteChat(): AsyncGenerator<AgentEvent> {
       try {
         while (true) {
           const item = await queue.next();
@@ -265,7 +412,8 @@ export class RemoteBrowserAgent {
         }
       } finally {
         cleanup();
-        if (!finished && agent.portAlive) {
+        agent.unregisterStream(runId, streamControl);
+        if (!finished && !streamControl.suppressInterrupt && agent.portAlive) {
           // Generator dropped early (Stop pressed / chat reset) — abort the
           // host-side run too.
           try {
@@ -280,6 +428,13 @@ export class RemoteBrowserAgent {
         }
       }
     })();
+    return Object.assign(stream, {
+      runId,
+      detach: (options?: RunDetachOptions) => {
+        streamControl.suppressInterrupt = true;
+        agent.sendDetach(runId, runId, options);
+      },
+    });
   }
 
   async rollbackLastAssistantTurn(sessionId: string): Promise<boolean> {
@@ -299,22 +454,51 @@ export class RemoteBrowserAgent {
   }
 
   /** Reset the gateway web-thread state host-side (New Chat / restore). */
-  async freshGatewayThread(model: string | undefined): Promise<void> {
-    await this.rpc("fresh_gateway_thread", { model });
+  async freshGatewayThread(
+    model: string | undefined,
+    options: { resetRemote?: boolean } = {},
+  ): Promise<void> {
+    this.gatewayRouteId = newGatewayRouteId();
+    saveCurrentGatewayRouteId(this.gatewayRouteId);
+    await this.rpc("fresh_gateway_thread", {
+      model,
+      resetRemote: options.resetRemote,
+    });
+  }
+
+  activateGatewayConversation(conversationId: string): void {
+    const savedRouteId = readConversationRoutes()[conversationId];
+    this.gatewayRouteId = savedRouteId ?? `conversation-${conversationId}`;
+    saveCurrentGatewayRouteId(this.gatewayRouteId);
+    if (!savedRouteId) {
+      saveConversationRoute(conversationId, this.gatewayRouteId);
+    }
   }
 
   /**
    * Associate the most recent run started by this client (or the run
    * attached to) with a saved conversation id — best-effort.
    */
-  bindConversation(conversationId: string): void {
-    if (!this.lastRunId) return;
+  bindConversation(
+    conversationId: string,
+    runId = this.lastRunId,
+    persistenceReady = false,
+    userMessageId?: string,
+  ): void {
+    if (!runId) return;
+    const routeId = this.runRouteIds.get(runId);
+    if (routeId) {
+      saveConversationRoute(conversationId, routeId);
+      this.runRouteIds.delete(runId);
+    }
     try {
       this.ensurePort().postMessage({
         type: "bind_conversation",
         clientId: this.clientId,
-        runId: this.lastRunId,
+        runId,
         conversationId,
+        persistenceReady,
+        userMessageId,
       });
     } catch {
       // Host gone; binding is best-effort.
@@ -322,27 +506,76 @@ export class RemoteBrowserAgent {
   }
 
   /**
-   * Attach to the host's current run (if any): returns the run metadata and
-   * a generator that replays buffered events then continues live.
+   * Release a run from this UI without cancelling its host-side execution.
+   * Closing the matching local generator after this call will not emit an
+   * interrupt.
    */
-  async attachActiveRun(): Promise<ActiveRunAttachment | null> {
+  detachRun(
+    runId: string,
+    conversationId?: string,
+    persistencePending?: boolean,
+    consumerId = runId,
+    userMessageId?: string,
+  ): void {
+    this.suppressStreamInterrupts(runId);
+    this.sendDetach(runId, consumerId, {
+      conversationId,
+      persistencePending,
+      userMessageId,
+    });
+  }
+
+  /**
+   * Attach to the newest visible run, or to the retained run for a specific
+   * conversation. Buffered events are replayed before live events.
+   */
+  async attachActiveRun(
+    conversationId?: string,
+  ): Promise<ActiveRunAttachment | null> {
     const port = this.ensurePort();
+    const requestId = this.newId("attach");
+    const queue = new AsyncEventQueue<StreamItem>();
+    let runId: string | null = null;
+    let streamListener: ((message: ChatHostOutbound) => void) | null = null;
 
     const snapshot = await new Promise<RunSnapshot | null>((resolve) => {
       const onReply = (message: ChatHostOutbound): void => {
-        if (message.type === "replay") {
-          this.messageListeners.delete(onReply);
+        if (message.type === "replay" && message.requestId === requestId) {
+          runId = message.run.runId;
+          if (message.run.done) {
+            this.messageListeners.delete(onReply);
+          }
           resolve(message.run);
-        } else if (message.type === "no_active_run") {
+        } else if (
+          message.type === "no_active_run" &&
+          message.requestId === requestId
+        ) {
           this.messageListeners.delete(onReply);
           resolve(null);
         } else if ((message as { type?: string }).type === "__disconnected") {
           this.messageListeners.delete(onReply);
-          resolve(null);
+          if (runId) {
+            queue.push({ kind: "done" });
+          } else {
+            resolve(null);
+          }
+        } else if (message.type === "event" && message.runId === runId) {
+          queue.push({
+            kind: "event",
+            event: deserializeAgentEvent(message.event),
+          });
+        } else if (message.type === "turn_done" && message.runId === runId) {
+          queue.push({ kind: "done" });
         }
       };
+      streamListener = onReply;
       this.messageListeners.add(onReply);
-      port.postMessage({ type: "attach", clientId: this.clientId });
+      port.postMessage({
+        type: "attach",
+        clientId: this.clientId,
+        requestId,
+        conversationId,
+      });
     });
 
     if (!snapshot) {
@@ -350,34 +583,38 @@ export class RemoteBrowserAgent {
     }
 
     this.lastRunId = snapshot.runId;
-    const queue = new AsyncEventQueue<StreamItem>();
-    const runId = snapshot.runId;
-    const listener = (message: ChatHostOutbound): void => {
-      if ((message as { type?: string }).type === "__disconnected") {
-        queue.push({ kind: "done" });
-        return;
-      }
-      if (message.type === "event" && message.runId === runId) {
-        queue.push({
-          kind: "event",
-          event: deserializeAgentEvent(message.event),
-        });
-      } else if (message.type === "turn_done" && message.runId === runId) {
-        queue.push({ kind: "done" });
-      }
-    };
-
-    // Live listener registered before consuming the buffer; the host pauses
-    // nothing, but events arriving while we replay simply queue up behind.
-    if (!snapshot.done) {
-      this.messageListeners.add(listener);
-    }
 
     const messageListeners = this.messageListeners;
     const buffered = snapshot.events.map(deserializeAgentEvent);
     const isDone = snapshot.done;
+    const activeRunId = snapshot.runId;
+    const agent = this;
+    let finished = isDone;
+    const streamControl = this.registerStream(activeRunId);
+    let released = false;
+    const releaseListener = (): void => {
+      if (released) return;
+      released = true;
+      if (streamListener) {
+        messageListeners.delete(streamListener);
+      }
+      agent.unregisterStream(activeRunId, streamControl);
+    };
+    const detach = (options: RunDetachOptions = {}): void => {
+      if (!finished) {
+        streamControl.suppressInterrupt = true;
+        agent.sendDetach(activeRunId, requestId, {
+          conversationId:
+            options.conversationId ?? snapshot.conversationId ?? undefined,
+          persistencePending: options.persistencePending,
+          userMessageId:
+            options.userMessageId ?? snapshot.userMessageId ?? undefined,
+        });
+      }
+      releaseListener();
+    };
 
-    const events =
+    const events = Object.assign(
       (async function* replayThenLive(): AsyncGenerator<AgentEvent> {
         try {
           for (const event of buffered) {
@@ -389,6 +626,7 @@ export class RemoteBrowserAgent {
           while (true) {
             const item = await queue.next();
             if (item.kind === "done") {
+              finished = true;
               return;
             }
             if (item.kind === "failed") {
@@ -397,18 +635,37 @@ export class RemoteBrowserAgent {
             yield item.event;
           }
         } finally {
-          messageListeners.delete(listener);
+          releaseListener();
+          if (
+            !finished &&
+            !streamControl.suppressInterrupt &&
+            agent.portAlive
+          ) {
+            try {
+              agent.ensurePort().postMessage({
+                type: "interrupt",
+                clientId: agent.clientId,
+                runId: activeRunId,
+              });
+            } catch {
+              // Host already gone — nothing to interrupt.
+            }
+          }
         }
-      })();
+      })(),
+      { runId: activeRunId, detach },
+    );
 
     return {
       runId: snapshot.runId,
       userText: snapshot.userText,
+      userMessageId: snapshot.userMessageId,
       conversationId: snapshot.conversationId,
       sessionId: snapshot.sessionId,
       done: snapshot.done,
       completedDetached: snapshot.completedDetached,
       truncated: snapshot.truncated,
+      detach,
       events,
     };
   }

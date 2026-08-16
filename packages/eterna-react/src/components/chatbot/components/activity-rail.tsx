@@ -15,7 +15,10 @@ import { translatedToolName } from "../../../i18n/tool-names";
 import type { UIToolPart } from "../../../types";
 import { Response } from "../../ai-elements/response";
 import { ToolInput, ToolOutput, ToolScreenshot } from "../../ai-elements/tool";
+import { AgentActivity } from "../../beui/agents/agent-activity";
+import type { AgentActivityItem } from "../../beui/agents/agent-activity/types";
 import { AgentDisclosure } from "../../beui/agents/agent-disclosure";
+import { ThinkingShimmer } from "../../beui/agents/loading-states/thinking-shimmer";
 import {
   type TodoItem,
   type TodoItemStatus,
@@ -415,7 +418,13 @@ const RailTrack = memo(function RailTrack({
         <div className="rail-content">
           {step.kind === "thought" ? (
             <>
-              <div className="rail-step-title">{t("activity.plan")}</div>
+              <div className="rail-step-title">
+                {isActive ? (
+                  <ThinkingShimmer>{t("activity.thinking")}</ThinkingShimmer>
+                ) : (
+                  t("activity.thinking")
+                )}
+              </div>
               <div className="rail-step-body">{step.text}</div>
             </>
           ) : step.kind === "browser" ? (
@@ -486,6 +495,67 @@ function RailElapsed({
 }
 
 type RailPhase = "live" | "shrinking" | "collapsed" | "open";
+
+/**
+ * Thinking-only turns, rendered with beui's AgentActivity: the thought streams
+ * in as text and settles into a "Thought for Ns" disclosure.
+ *
+ * Paragraphs become separate entries so a long thought stays readable and each
+ * one can glide in on its own instead of the whole block re-flowing.
+ */
+const ThoughtActivity = memo(function ThoughtActivity({
+  steps,
+  isLive,
+}: {
+  steps: Array<Extract<ActivityStep, { kind: "thought" }>>;
+  isLive: boolean;
+}) {
+  const startedAtRef = useRef<number | null>(null);
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    if (isLive) {
+      if (startedAtRef.current === null) startedAtRef.current = Date.now();
+      const timer = setInterval(() => {
+        const startedAt = startedAtRef.current;
+        if (startedAt !== null) {
+          setDuration((Date.now() - startedAt) / 1000);
+        }
+      }, 200);
+      return () => clearInterval(timer);
+    }
+    const startedAt = startedAtRef.current;
+    if (startedAt !== null) {
+      setDuration((Date.now() - startedAt) / 1000);
+      startedAtRef.current = null;
+    }
+  }, [isLive]);
+
+  const items = useMemo<AgentActivityItem[]>(
+    () =>
+      steps.flatMap((step) =>
+        step.text
+          .split(/\n{2,}/)
+          .map((paragraph) => paragraph.trim())
+          .filter(Boolean)
+          .map((content, index) => ({
+            id: `${step.key}-${index}`,
+            type: "text" as const,
+            content,
+          })),
+      ),
+    [steps],
+  );
+
+  return (
+    <AgentActivity
+      items={items}
+      contentType="text"
+      status={isLive ? "working" : "complete"}
+      duration={duration}
+    />
+  );
+});
 
 export interface ActivityRailProps {
   steps: ActivityStep[];
@@ -563,6 +633,19 @@ export const ActivityRail = memo(function ActivityRail({
 
   if (steps.length === 0 && !isLive) {
     return null;
+  }
+
+  // A turn that only thought — no tools, no browser steps — is presented as
+  // beui's activity stream ("Thought for 9s" over the gliding text) rather than
+  // the rail. The rail earns its chrome when there is a sequence of tool calls
+  // to follow; for a single block of reasoning it is all frame and no picture.
+  if (steps.length > 0 && steps.every((step) => step.kind === "thought")) {
+    return (
+      <ThoughtActivity
+        steps={steps as Array<Extract<ActivityStep, { kind: "thought" }>>}
+        isLive={isLive}
+      />
+    );
   }
 
   // Header always says WHAT it's doing: the active tool's verb-form name, or

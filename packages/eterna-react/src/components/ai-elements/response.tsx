@@ -120,6 +120,14 @@ function QuietBlockquote(props: ExtraProps) {
   );
 }
 
+// Stable identity: a fresh components object per render forces Streamdown to
+// rebuild its merged component map and every block's memo comparator to walk
+// it (~40 entries × N blocks × 20 commits/s while streaming).
+const DEFAULT_COMPONENTS = {
+  pre: CopyablePre,
+  blockquote: QuietBlockquote,
+};
+
 export const Response = memo(
   ({ className, components, ...props }: ResponseProps) => (
     <Suspense fallback={null}>
@@ -128,11 +136,11 @@ export const Response = memo(
           "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
           className,
         )}
-        components={{
-          pre: CopyablePre,
-          blockquote: QuietBlockquote,
-          ...components,
-        }}
+        components={
+          components
+            ? { ...DEFAULT_COMPONENTS, ...components }
+            : DEFAULT_COMPONENTS
+        }
         {...props}
       />
     </Suspense>
@@ -152,6 +160,12 @@ const TYPEWRITER_CHARS_PER_SECOND = 240;
 // too expensive for long answers. ~20 commits/sec stays smooth but cheap.
 const TYPEWRITER_COMMIT_INTERVAL_MS = 50;
 
+// The reveal may trail the live stream by at most this many characters. Fast
+// models outrun 240 cps several-fold; without this cap a 20 000-char answer
+// keeps "typing" — re-lexing the whole markdown 20× a second — for over a
+// minute after the stream already delivered everything.
+const TYPEWRITER_MAX_BACKLOG_CHARS = 600;
+
 function useTypewriter(text: string, animate: boolean): string {
   const [count, setCount] = useState(() => (animate ? 0 : text.length));
   const hasAnimatedRef = useRef(animate);
@@ -168,6 +182,13 @@ function useTypewriter(text: string, animate: boolean): string {
       setCount(text.length);
       return;
     }
+    if (!animate) {
+      // The run is over. Finish the reveal now — each further frame would
+      // re-parse the entire message for a purely cosmetic tail.
+      hasAnimatedRef.current = false;
+      setCount(text.length);
+      return;
+    }
     // Steady, time-based reveal (framerate-independent), throttled so Streamdown
     // re-parses at most ~20×/sec instead of once per frame.
     let raf = 0;
@@ -177,7 +198,10 @@ function useTypewriter(text: string, animate: boolean): string {
     const step = (now: number) => {
       shown = Math.min(
         text.length,
-        shown + ((now - last) / 1000) * TYPEWRITER_CHARS_PER_SECOND,
+        Math.max(
+          shown + ((now - last) / 1000) * TYPEWRITER_CHARS_PER_SECOND,
+          text.length - TYPEWRITER_MAX_BACKLOG_CHARS,
+        ),
       );
       last = now;
       if (
@@ -193,7 +217,7 @@ function useTypewriter(text: string, animate: boolean): string {
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [text]);
+  }, [text, animate]);
 
   return hasAnimatedRef.current ? text.slice(0, count) : text;
 }

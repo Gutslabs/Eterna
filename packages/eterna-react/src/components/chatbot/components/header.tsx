@@ -1,5 +1,5 @@
 import { PlusIcon, SettingsIcon } from "lucide-react";
-import { useCallback } from "react";
+import { memo, useCallback } from "react";
 import { useTranslation } from "../../../i18n/context";
 import { getRuntime } from "../../../lib/runtime";
 import { cn } from "../../../lib/utils";
@@ -73,9 +73,13 @@ export function DefaultHeader({
 }
 
 /**
- * Header - Renders either custom or default header
+ * Header - Renders either custom or default header.
+ *
+ * Memoized: the parent subscribes to the whole chat context and re-renders on
+ * every streaming publish, while the header's own props (title, stable
+ * callbacks) almost never change.
  */
-export function Header(props: HeaderProps) {
+export const Header = memo(function Header(props: HeaderProps) {
   const { components } = useComponentsContext();
 
   const CustomComponent = components.Header;
@@ -84,4 +88,4 @@ export function Header(props: HeaderProps) {
   }
 
   return <DefaultHeader {...props} />;
-}
+});

@@ -315,12 +315,15 @@ export function useChat(
       state.pending = null;
       state.lastPublishAt = Date.now();
       setMessages(newMessages);
-      // Find the last assistant message for the callback
-      const lastAssistant = newMessages
-        .filter((m) => m.role === "assistant")
-        .pop();
-      if (lastAssistant) {
-        handlersRef.current?.onResponseReceived?.(lastAssistant);
+      // Find the last assistant message for the callback — walked backwards
+      // so a 20Hz publish over a long conversation doesn't allocate a full
+      // filtered copy just to take its final element.
+      for (let i = newMessages.length - 1; i >= 0; i--) {
+        const message = newMessages[i];
+        if (message?.role === "assistant") {
+          handlersRef.current?.onResponseReceived?.(message);
+          break;
+        }
       }
     };
 

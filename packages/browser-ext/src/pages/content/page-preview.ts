@@ -31,7 +31,18 @@ function isSafeImageSrc(src: string): boolean {
   return /^(data:image\/|blob:|https:)/.test(src);
 }
 
+// The live preview's teardown. Removing only the host element would leave the
+// previous preview's document/window listeners alive, each closure pinning its
+// media (for images, the full base64 data URL) on the host page's heap.
+let activeDispose: (() => void) | null = null;
+
 export function closePagePreview(): void {
+  const dispose = activeDispose;
+  activeDispose = null;
+  if (dispose) {
+    dispose();
+    return;
+  }
   document.getElementById(HOST_ID)?.remove();
 }
 
@@ -163,7 +174,15 @@ export function showPagePreview(payload: PagePreviewPayload): boolean {
   // Diagrams need a plate behind them (mermaid SVG is transparent); photos
   // read best borderless on the dimmed page.
   mediaBox.className = kind === "svg" ? "media plate" : "media bare";
-  mediaBox.append(media);
+  // Zoom happens on this wrapper: the media keeps its base layout size
+  // forever and is scaled with a compositor-only transform, so a pinch never
+  // re-lays-out a mermaid SVG's thousands of foreignObject labels. The
+  // wrapper's explicit size is what makes the scroll area grow.
+  const zoomBox = document.createElement("div");
+  zoomBox.style.overflow = "hidden";
+  zoomBox.style.margin = "0 auto";
+  zoomBox.append(media);
+  mediaBox.append(zoomBox);
 
   // ---- Zoom ----
   // The SVG arrives sized for the ~400px panel it was rendered in; shown as-is
@@ -204,17 +223,32 @@ export function showPagePreview(payload: PagePreviewPayload): boolean {
     if (!baseWidth || !baseHeight) return;
     const scale = fitScale() * zoom;
     const target = media as unknown as HTMLElement;
-    // Replaces mermaid's inline max-width cap, which would refuse to grow.
+    // Base layout size is set once; it replaces mermaid's inline max-width
+    // cap, which would refuse to grow. Zoom itself is transform-only.
     target.setAttribute(
       "style",
-      `width:${Math.round(baseWidth * scale)}px;height:auto;max-width:none;`,
+      `width:${Math.round(baseWidth)}px;height:auto;max-width:none;` +
+        `transform:scale(${scale});transform-origin:0 0;`,
     );
+    zoomBox.style.width = `${Math.round(baseWidth * scale)}px`;
+    zoomBox.style.height = `${Math.round(baseHeight * scale)}px`;
     pct.textContent = `${Math.round(scale * 100)}%`;
+  };
+
+  // Trackpad pinches emit 60-120 wheel events a second; one zoom write per
+  // frame is all the eye can use.
+  let zoomRaf = 0;
+  const scheduleZoom = () => {
+    if (zoomRaf) return;
+    zoomRaf = requestAnimationFrame(() => {
+      zoomRaf = 0;
+      applyZoom();
+    });
   };
 
   const setZoom = (next: number) => {
     zoom = Math.min(6, Math.max(0.3, next));
-    applyZoom();
+    scheduleZoom();
   };
 
   const zoomWrap = document.createElement("div");
@@ -253,10 +287,12 @@ export function showPagePreview(payload: PagePreviewPayload): boolean {
     });
   }
 
-  const onResize = () => applyZoom();
+  const onResize = () => scheduleZoom();
   window.addEventListener("resize", onResize);
 
   const dispose = () => {
+    if (activeDispose === dispose) activeDispose = null;
+    if (zoomRaf) cancelAnimationFrame(zoomRaf);
     document.removeEventListener("keydown", onKey, true);
     window.removeEventListener("resize", onResize);
     host.remove();
@@ -277,5 +313,6 @@ export function showPagePreview(payload: PagePreviewPayload): boolean {
   backdrop.append(frame);
   shadow.append(style, backdrop);
   document.documentElement.append(host);
+  activeDispose = dispose;
   return true;
 }

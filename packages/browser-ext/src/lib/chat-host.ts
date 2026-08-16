@@ -97,6 +97,58 @@ const DEFAULT_MAX_BUFFERED_EVENTS = 5000;
 // Streaming delta coalescing window for the port wire. Below the panel's own
 // ~50ms commit throttle, so batching adds no visible latency.
 const DELTA_FLUSH_MS = 30;
+// A run whose generator produces nothing for this long is treated as stalled
+// and force-finished. Without this, one hung model stream pins the keepalive
+// forever: the service worker never sleeps again until browser restart.
+const RUN_STALL_TIMEOUT_MS = 5 * 60 * 1000;
+
+const BUFFERED_IMAGE_PLACEHOLDER =
+  "[image data removed - view screenshot in original message]";
+
+function stripBufferedImages(value: unknown, depth: number): unknown {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    depth > 3
+  ) {
+    return value;
+  }
+  const obj = value as Record<string, unknown>;
+  let next: Record<string, unknown> | null = null;
+  for (const [key, entry] of Object.entries(obj)) {
+    if (
+      key === "imageData" &&
+      typeof entry === "string" &&
+      entry.startsWith("data:image/")
+    ) {
+      next ??= { ...obj };
+      next[key] = BUFFERED_IMAGE_PLACEHOLDER;
+    } else if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      const stripped = stripBufferedImages(entry, depth + 1);
+      if (stripped !== entry) {
+        next ??= { ...obj };
+        next[key] = stripped;
+      }
+    }
+  }
+  return next ?? value;
+}
+
+/**
+ * The replay buffer keeps events for ten minutes; a screenshot-heavy run would
+ * otherwise pin megabytes of base64 in the worker heap for that whole window.
+ * The bytes are already durable in screenshot storage under `screenshotUid`
+ * (the tool saves them at capture time), so replays render from there — only
+ * the live broadcast carries the pixels.
+ */
+function stripBufferedEventImages(event: WireAgentEvent): WireAgentEvent {
+  if (event.type !== "tool_call_complete") return event;
+  const result = (event as { result?: unknown }).result;
+  const stripped = stripBufferedImages(result, 0);
+  if (stripped === result) return event;
+  return { ...event, result: stripped } as WireAgentEvent;
+}
 
 export interface ChatHost {
   handlePort(port: ChatPortLike): void;
@@ -202,7 +254,7 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       run.truncated = true;
       return;
     }
-    run.events.push(event);
+    run.events.push(stripBufferedEventImages(event));
   };
 
   const persistCompletedRun = (run: RunState): void => {
@@ -272,6 +324,7 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
     let pendingDeltaType: "content_delta" | "reasoning_delta" | null = null;
     let pendingDeltaText = "";
     let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
 
     const flushPendingDelta = (): void => {
       if (deltaFlushTimer !== null) {
@@ -319,7 +372,25 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
         ambientImage: ambientImage ?? undefined,
       });
       run.generator = generator;
+      // Inactivity watchdog: the model fetch carries no abort signal, so a
+      // stalled SSE stream would otherwise leave this loop awaiting forever
+      // with the keepalive held. Force-finishing releases the keepalive and
+      // the buffered run; if the stream ever revives, isRunnable() is false
+      // and the loop exits on the next event.
+      const armStallTimer = (): void => {
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => {
+          if (!isRunnable(run)) return;
+          run.interrupted = true;
+          run.error ??= "Run stalled: no events from the model stream.";
+          void generator.return(undefined as never).catch(() => {});
+          flushPendingDelta();
+          finishRun(run);
+        }, RUN_STALL_TIMEOUT_MS);
+      };
+      armStallTimer();
       for await (const event of generator) {
+        armStallTimer();
         if (!isRunnable(run)) break;
         if (
           event.type === "session_created" ||
@@ -354,6 +425,7 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       bufferEvent(run, wire);
       broadcast(run, { type: "event", runId: run.runId, event: wire });
     } finally {
+      clearTimeout(stallTimer);
       flushPendingDelta();
       finishRun(run);
     }

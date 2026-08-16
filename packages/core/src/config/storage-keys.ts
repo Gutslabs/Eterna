@@ -6,7 +6,7 @@ export const STORAGE_KEYS = {
   SETTINGS: `${PREFIX}settings`,
   HOST_ACCESS_CONFIG: `${PREFIX}host_access_config`,
   AUTOMATION_MODE: `${PREFIX}automation_mode`,
-  /** User toggle (default ON): auto-attach a viewport screenshot every message. */
+  /** User toggle (default OFF): auto-attach a viewport screenshot every message. */
   AUTO_ATTACH_SCREENSHOT: `${PREFIX}auto_attach_screenshot`,
   /** Long-term user memory: durable facts saved via the remember tool. */
   MEMORY: `${PREFIX}memory`,

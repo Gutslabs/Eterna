@@ -83,6 +83,28 @@ export interface UnifiedSnapshot {
  */
 const domSnapshotCache = new Map<number, UnifiedSnapshot>();
 
+// A snapshot is a full AX tree — single-digit MB on a complex page — and an
+// automation run's keepalive holds the worker (and this map) alive. Without
+// eviction a multi-tab run retains every tree it ever took until the worker
+// dies. Recency-capped, and dropped outright when the tab closes.
+const MAX_CACHED_SNAPSHOT_TABS = 5;
+
+function retainSnapshot(tabId: number, unified: UnifiedSnapshot): void {
+  domSnapshotCache.delete(tabId);
+  domSnapshotCache.set(tabId, unified);
+  while (domSnapshotCache.size > MAX_CACHED_SNAPSHOT_TABS) {
+    const oldest = domSnapshotCache.keys().next().value;
+    if (oldest === undefined) break;
+    domSnapshotCache.delete(oldest);
+  }
+}
+
+if (typeof chrome !== "undefined" && chrome.tabs?.onRemoved) {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    clearSnapshot(tabId);
+  });
+}
+
 /**
  * Convert DOM snapshot node to TextSnapshotNode format
  */
@@ -203,7 +225,7 @@ export async function createSnapshot(
         `🧪 [SnapshotProvider] DOM snapshot received, nodes: ${Object.keys(domSnapshot.idToNode).length}`,
       );
       const unified = convertDomSnapshotToUnified(domSnapshot, tabId);
-      domSnapshotCache.set(tabId, unified);
+      retainSnapshot(tabId, unified);
       // Clear CDP cache to avoid confusion
       snapshotManager.clearSnapshot(tabId);
       console.log(

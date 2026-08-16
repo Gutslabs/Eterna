@@ -256,7 +256,9 @@ async function configureSidePanel() {
   }
 }
 
-void configureSidePanel();
+// Panel behavior and the native-panel flag persist for the browser session,
+// so configuring on install/update and browser startup is enough — repeating
+// it at module top level made every SW wake pay three extension-API calls.
 chrome.runtime.onStartup.addListener(() => {
   void configureSidePanel();
 });
@@ -440,7 +442,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const tabId = tabs[0]?.id;
       if (tabId && message.message) {
         chrome.tabs
-          .sendMessage(tabId, message.message)
+          // Top frame only: the handlers are isTopFrame-gated anyway, and
+          // without frameId Chrome structured-clones the payload (which can
+          // carry a multi-MB preview image) into every ad iframe on the page.
+          .sendMessage(tabId, message.message, { frameId: 0 })
           .then(() => sendResponse({ success: true }))
           .catch((err) => {
             sendResponse({

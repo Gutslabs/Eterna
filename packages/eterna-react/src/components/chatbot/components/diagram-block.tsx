@@ -33,7 +33,8 @@ import { useExternalPreview } from "../../preview/external-preview";
 const SVG_CACHE_MAX = 32;
 const svgCache = new Map<string, string>();
 
-const cacheKey = (theme: string, source: string): string => `${theme}:${source}`;
+const cacheKey = (theme: string, source: string): string =>
+  `${theme}:${source}`;
 
 function cacheGet(key: string): string | null {
   const hit = svgCache.get(key);

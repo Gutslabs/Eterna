@@ -7,7 +7,7 @@ import {
 } from "@eterna/core";
 import type { ChatStatus } from "ai";
 import { ClockIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../../i18n/context";
 import { fetchModelsForSelector, onModelListChange } from "../../../lib/models";
 import { cn } from "../../../lib/utils";
@@ -539,9 +539,14 @@ export function DefaultInputArea({
 }
 
 /**
- * InputArea - Renders either custom or default input area
+ * InputArea - Renders either custom or default input area.
+ *
+ * Memoized: the parent re-renders 20x/s while streaming, but the composer's
+ * props only change when the user types or the run status flips.
  */
-export function InputArea(props: ExtendedInputAreaProps) {
+export const InputArea = memo(function InputArea(
+  props: ExtendedInputAreaProps,
+) {
   const { components } = useComponentsContext();
 
   const CustomComponent = components.InputArea;
@@ -550,4 +555,4 @@ export function InputArea(props: ExtendedInputAreaProps) {
   }
 
   return <DefaultInputArea {...props} />;
-}
+});

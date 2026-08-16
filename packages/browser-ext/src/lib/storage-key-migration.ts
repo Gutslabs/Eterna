@@ -16,6 +16,14 @@
 const LEGACY_PREFIX = "aipex_";
 const CURRENT_PREFIX = "eterna_";
 
+/**
+ * Set once the copy has run to completion. The MV3 worker cold-starts dozens
+ * of times an hour, and `get(null)` deserializes the entire local store into
+ * the heap each time — after the first successful pass there is nothing left
+ * to migrate, so later wakes check this one key and stop.
+ */
+const MIGRATION_DONE_KEY = "eterna_storage_key_migration_done";
+
 /** Keys that predate the rename and are not built from STORAGE_KEYS. */
 const LEGACY_STANDALONE_KEYS: Record<string, string> = {
   "aipex-input-mode": "eterna-input-mode",
@@ -32,6 +40,9 @@ function renameKey(key: string): string | null {
 
 export async function migrateLegacyStorageKeys(): Promise<number> {
   try {
+    const doneFlag = await chrome.storage.local.get(MIGRATION_DONE_KEY);
+    if (doneFlag[MIGRATION_DONE_KEY]) return 0;
+
     const all = await chrome.storage.local.get(null);
     const pending: Record<string, unknown> = {};
 
@@ -48,6 +59,7 @@ export async function migrateLegacyStorageKeys(): Promise<number> {
       await chrome.storage.local.set(pending);
       console.log(`[Eterna] Migrated ${count} storage key(s) from aipex_*`);
     }
+    await chrome.storage.local.set({ [MIGRATION_DONE_KEY]: true });
     return count;
   } catch (error) {
     // A failed migration must never block startup — the app still runs, it

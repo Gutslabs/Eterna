@@ -119,11 +119,6 @@ export class SkillManager {
       // the fragile part in the MV3 service worker. It lazily initializes
       // itself on the first executeScript call.
 
-      // Load all skills from storage
-      console.log("📋 Loading skills from storage...");
-      const allSkills = await skillStorage.listSkills();
-      console.log(`Found ${allSkills.length} skills in storage`);
-
       // Auto-load skill-creator-browser if not already loaded
       console.log("🔧 Loading built-in skill-creator...");
       await this.loadBuiltinSkillCreator();
@@ -169,8 +164,7 @@ export class SkillManager {
 
       // Auto-load enabled skills if configured
       if (this.config.autoLoadEnabledSkills) {
-        console.log("🚀 Auto-loading enabled skills...");
-        await this.loadEnabledSkills(updatedSkills);
+        this.loadEnabledSkills(updatedSkills);
       }
 
       this.initialized = true;
@@ -688,18 +682,19 @@ export class SkillManager {
     }
   }
 
-  private async loadEnabledSkills(skills: SkillMetadata[]): Promise<void> {
+  private loadEnabledSkills(skills: SkillMetadata[]): void {
+    // The metadata in hand is everything loadSkill() would have re-read from
+    // IndexedDB (a full SKILL.md plus three directory walks per skill, every
+    // service-worker wake) just to add the name to this set.
     const enabledSkills = skills.filter((skill) => skill.enabled);
-    console.log(`🔄 Auto-loading ${enabledSkills.length} enabled skills...`);
-
     for (const skill of enabledSkills) {
-      try {
-        console.log(`📥 Loading skill: ${skill.name}`);
-        await this.loadSkill(skill.id);
-        console.log(`✅ Successfully loaded skill: ${skill.name}`);
-      } catch (error) {
-        console.error(`❌ Failed to auto-load skill ${skill.name}:`, error);
-      }
+      this.loadedSkills.add(skill.name);
+      this._emit("skill_loaded", {
+        type: "skill_loaded",
+        skillId: skill.id,
+        skillName: skill.name,
+        skillMetadata: skill,
+      });
     }
   }
 

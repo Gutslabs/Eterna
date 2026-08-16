@@ -547,6 +547,24 @@ export class Eterna {
             alreadySent,
           );
           for (const fingerprint of fingerprints) alreadySent.add(fingerprint);
+          // Fingerprints are ~50 bytes each but nothing ever removes a
+          // conversation's set; cap per conversation (drop oldest — worst
+          // case a re-sent page body, not a correctness issue) and cap the
+          // conversation count so the agent instance never grows unbounded.
+          while (alreadySent.size > 200) {
+            const oldest = alreadySent.values().next().value;
+            if (oldest === undefined) break;
+            alreadySent.delete(oldest);
+          }
+          if (
+            !this.sentContextFingerprints.has(conversationKey) &&
+            this.sentContextFingerprints.size >= 100
+          ) {
+            const oldestKey = this.sentContextFingerprints.keys().next().value;
+            if (oldestKey !== undefined) {
+              this.sentContextFingerprints.delete(oldestKey);
+            }
+          }
           this.sentContextFingerprints.set(conversationKey, alreadySent);
 
           const contextText = formatContextsForPrompt(toSend);

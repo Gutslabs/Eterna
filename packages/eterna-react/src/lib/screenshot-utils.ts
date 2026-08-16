@@ -38,6 +38,53 @@ export interface ScreenshotExtraction {
   screenshotUid: string | null;
 }
 
+export const INLINE_IMAGE_DATA_PLACEHOLDER =
+  "[image data removed - view screenshot in original message]";
+
+function replaceInlineImageData(value: unknown, depth: number): unknown {
+  if (!value || typeof value !== "object" || depth > 3) return value;
+  if (Array.isArray(value)) {
+    let next: unknown[] | null = null;
+    value.forEach((entry, index) => {
+      const replaced = replaceInlineImageData(entry, depth + 1);
+      if (replaced !== entry) {
+        next ??= [...value];
+        next[index] = replaced;
+      }
+    });
+    return next ?? value;
+  }
+  const obj = value as Record<string, unknown>;
+  let next: Record<string, unknown> | null = null;
+  for (const [key, entry] of Object.entries(obj)) {
+    if (
+      (key === "imageData" || key === "image") &&
+      typeof entry === "string" &&
+      entry.startsWith("data:image/")
+    ) {
+      next ??= { ...obj };
+      next[key] = INLINE_IMAGE_DATA_PLACEHOLDER;
+    } else if (entry && typeof entry === "object") {
+      const replaced = replaceInlineImageData(entry, depth + 1);
+      if (replaced !== entry) {
+        next ??= { ...obj };
+        next[key] = replaced;
+      }
+    }
+  }
+  return next ?? value;
+}
+
+/**
+ * A screenshot tool result with the inline base64 swapped for a placeholder.
+ * Used when the bytes are already durable under a screenshotUid: keeping the
+ * base64 in `part.output` makes every conversation autosave re-stringify
+ * megabytes on the main thread.
+ */
+export function withoutInlineImageData(result: unknown): unknown {
+  return replaceInlineImageData(result, 0);
+}
+
 /**
  * Extract screenshot info from a tool result.
  * Works with capture_screenshot and capture_tab_screenshot tools.

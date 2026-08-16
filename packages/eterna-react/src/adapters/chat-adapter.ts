@@ -5,6 +5,7 @@ import {
   extractScreenshotFromToolResult,
   isCaptureScreenshotTool,
   type ScreenshotExtraction,
+  withoutInlineImageData,
 } from "../lib/screenshot-utils";
 import type {
   ChatAdapterOptions,
@@ -617,11 +618,15 @@ export class ChatAdapter {
     info: ScreenshotExtraction,
   ): void {
     if (info.screenshotUid) {
-      // Tool already saved to IndexedDB — use its uid directly
+      // Tool already saved to IndexedDB — use its uid directly. The retained
+      // output drops the base64: the conversation autosave JSON-stringifies
+      // part.output every ≤2s while streaming, and a few screenshots held as
+      // raw output mean megabytes of stringify per save. Inline rendering
+      // uses the `screenshot` field; restores load by uid.
       this.updateToolPart(callId, (toolPart) => ({
         ...toolPart,
         state: "completed",
-        output: result,
+        output: withoutInlineImageData(result),
         duration: elapsedToolDuration(toolPart),
         screenshotUid: info.screenshotUid!,
         // Keep inline screenshot for immediate rendering if base64 is present

@@ -40,9 +40,13 @@ async function captureActiveVisibleTab(): Promise<string | null> {
     return null;
   }
 
+  // JPEG at the source: `quality` is ignored for PNG, so the old "png at 90"
+  // produced a lossless full-DPR capture — 2-6 MB of base64 through the SW
+  // heap per message, only to be recompressed to JPEG anyway. Capturing JPEG
+  // cuts the raw string and the decode that follows 10-30x.
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
-    format: "png",
-    quality: 90,
+    format: "jpeg",
+    quality: 80,
   });
   return dataUrl?.startsWith("data:image/") ? dataUrl : null;
 }

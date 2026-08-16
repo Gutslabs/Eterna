@@ -62,7 +62,28 @@ describe("legacy storage key migration", () => {
     store = { "ws-mcp-url": "ws://localhost:9223" };
     const moved = await migrateLegacyStorageKeys();
     expect(moved).toBe(0);
-    expect(Object.keys(store)).toEqual(["ws-mcp-url"]);
+    expect(store["ws-mcp-url"]).toBe("ws://localhost:9223");
+    // Only the done marker may be added alongside.
+    expect(Object.keys(store).filter((key) => key !== "ws-mcp-url")).toEqual([
+      "eterna_storage_key_migration_done",
+    ]);
+  });
+
+  it("skips the full-store scan once the done marker is set", async () => {
+    store = { aipex_theme: "dark" };
+    await migrateLegacyStorageKeys();
+    expect(store.eterna_theme).toBe("dark");
+
+    const get = (
+      chrome.storage.local as unknown as { get: ReturnType<typeof vi.fn> }
+    ).get;
+    get.mockClear();
+    const movedAgain = await migrateLegacyStorageKeys();
+
+    expect(movedAgain).toBe(0);
+    // One keyed read for the marker; never get(null) again.
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).not.toHaveBeenCalledWith(null);
   });
 
   it("does not throw when storage is unavailable", async () => {

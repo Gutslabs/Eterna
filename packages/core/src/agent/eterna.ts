@@ -6,7 +6,11 @@ import {
 } from "@openai/agents";
 import type { ContextManager } from "../context/manager.js";
 import type { Context } from "../context/types.js";
-import { formatContextsForPrompt, resolveContexts } from "../context/utils.js";
+import {
+  dropUnchangedContexts,
+  formatContextsForPrompt,
+  resolveContexts,
+} from "../context/utils.js";
 import { ConversationCompressor } from "../conversation/compressor.js";
 import { EphemeralSession } from "../conversation/ephemeral-session.js";
 import { ConversationManager } from "../conversation/manager.js";
@@ -49,6 +53,9 @@ import {
 /** Stands in for the prompt when a turn carries only attachments. */
 const ATTACHMENT_ONLY_PROMPT = "Take a look at the attached file.";
 
+/** Bucket for the opening turn, before a session id exists. */
+const NEW_CONVERSATION_KEY = "__new__";
+
 export class Eterna {
   private agent: OpenAIAgent;
   private conversationManager?: ConversationManager;
@@ -57,6 +64,12 @@ export class Eterna {
   private plugins: AgentPlugin[];
   private pluginContext: AgentPluginContext;
   private supportsVision: boolean;
+  /**
+   * Context bodies already delivered, per conversation. A pinned context (the
+   * current page) is re-attached every turn; this is what stops its full text
+   * from being prepended to — and paid for in — every single message.
+   */
+  private sentContextFingerprints = new Map<string, Set<string>>();
 
   private constructor(
     agent: OpenAIAgent,
@@ -521,10 +534,25 @@ export class Eterna {
 
         if (contextObjs.length > 0) {
           resolvedContexts = contextObjs;
-          // Format contexts and prepend to input
-          const contextText = formatContextsForPrompt(contextObjs);
+
+          // Send each context's body once per conversation; later turns get a
+          // pointer to it instead of the whole thing again.
+          const conversationKey =
+            chatOptions?.sessionId ?? NEW_CONVERSATION_KEY;
+          const alreadySent =
+            this.sentContextFingerprints.get(conversationKey) ??
+            new Set<string>();
+          const { contexts: toSend, fingerprints } = dropUnchangedContexts(
+            contextObjs,
+            alreadySent,
+          );
+          for (const fingerprint of fingerprints) alreadySent.add(fingerprint);
+          this.sentContextFingerprints.set(conversationKey, alreadySent);
+
+          const contextText = formatContextsForPrompt(toSend);
           finalTextInput = `${contextText}\n\n${input}`;
 
+          // The UI still shows the full context — only the prompt is trimmed.
           yield { type: "contexts_attached", contexts: contextObjs };
         }
       } catch (error) {
@@ -617,6 +645,13 @@ export class Eterna {
 
     if (this.conversationManager) {
       session = await this.conversationManager.createSession();
+      // The opening turn recorded its contexts before a session existed. Carry
+      // them onto the real id, or turn two would re-send the whole page.
+      const pending = this.sentContextFingerprints.get(NEW_CONVERSATION_KEY);
+      if (pending) {
+        this.sentContextFingerprints.set(session.id, pending);
+        this.sentContextFingerprints.delete(NEW_CONVERSATION_KEY);
+      }
       yield { type: "session_created", sessionId: session.id };
     }
 

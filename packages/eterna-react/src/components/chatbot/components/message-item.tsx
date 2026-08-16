@@ -33,6 +33,7 @@ import {
   SourcesContent,
   SourcesTrigger,
 } from "../../ai-elements/sources";
+import { StreamingResponse as BeuiStreamingResponse } from "../../beui/agents/streaming-response";
 import { useComponentsContext } from "../context";
 import { LoginPrompt } from "./login-prompt";
 import { ModelChangePrompt } from "./model-change-prompt";
@@ -345,22 +346,41 @@ export function DefaultMessageItem({
         switch (part.type) {
           case "text": {
             const processedText = processedTextByIndex?.get(i) ?? part.text;
+            const isAssistant = message.role === "assistant";
+            const isLive = isAssistant && isLast && isStreaming;
             return (
               <Fragment key={key}>
                 <Message from={message.role as "user" | "assistant" | "system"}>
                   <MessageContent>
-                    <StreamingResponse
-                      animate={
-                        message.role === "assistant" && isLast && isStreaming
-                      }
-                    >
-                      {processedText}
-                    </StreamingResponse>
+                    {isAssistant ? (
+                      // beui's shell carries the streaming state (data-state,
+                      // aria-busy) around the app's markdown renderer. Its prose
+                      // layer is off — Streamdown already styles the content,
+                      // and beui's descendant rules would outrank the code
+                      // block's own wrapping and copy-button padding. Its action
+                      // row is off too; the platform supplies richer ones below.
+                      <BeuiStreamingResponse
+                        status={isLive ? "streaming" : "complete"}
+                        prose={false}
+                        showActions={false}
+                        announce={false}
+                      >
+                        <StreamingResponse animate={isLive}>
+                          {processedText}
+                        </StreamingResponse>
+                      </BeuiStreamingResponse>
+                    ) : (
+                      <StreamingResponse animate={isLive}>
+                        {processedText}
+                      </StreamingResponse>
+                    )}
                   </MessageContent>
                 </Message>
-                {/* Actions for last assistant message */}
-                {message.role === "assistant" &&
+                {/* Actions for the last assistant message. Held back until the
+                    answer lands so the buttons don't jitter under growing text. */}
+                {isAssistant &&
                   isLast &&
+                  !isStreaming &&
                   (slots.messageActions ? (
                     slots.messageActions({
                       message,

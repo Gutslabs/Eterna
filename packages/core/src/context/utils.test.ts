@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Context } from "./types.js";
 import {
+  dropUnchangedContexts,
   formatContextsForPrompt,
   isContext,
   resolveContexts,
@@ -317,5 +318,67 @@ describe("resolveContexts", () => {
     expect(result[0]?.label).toBe("First");
     expect(result[1]?.label).toBe("Second");
     expect(result[2]?.label).toBe("Third");
+  });
+});
+
+describe("dropUnchangedContexts", () => {
+  const page = (value: string): Context => ({
+    id: "current-page",
+    type: "page",
+    providerId: "ui",
+    label: "Example",
+    value,
+    timestamp: 0,
+  });
+
+  it("sends the body the first time a context is seen", () => {
+    const { contexts, fingerprints } = dropUnchangedContexts(
+      [page("full page text")],
+      new Set(),
+    );
+    expect(contexts[0]?.value).toBe("full page text");
+    expect(fingerprints).toHaveLength(1);
+  });
+
+  it("replaces an already-sent body with a pointer", () => {
+    const first = dropUnchangedContexts([page("full page text")], new Set());
+    const seen = new Set(first.fingerprints);
+
+    const second = dropUnchangedContexts([page("full page text")], seen);
+
+    expect(second.contexts[0]?.value).not.toContain("full page text");
+    expect(second.contexts[0]?.value).toContain("unchanged");
+    // The reference itself survives so later turns can still resolve it.
+    expect(second.contexts[0]?.label).toBe("Example");
+    expect(second.contexts[0]?.id).toBe("current-page");
+  });
+
+  it("re-sends the body when the page content changes", () => {
+    const first = dropUnchangedContexts([page("original")], new Set());
+    const seen = new Set(first.fingerprints);
+
+    const second = dropUnchangedContexts([page("navigated elsewhere")], seen);
+
+    expect(second.contexts[0]?.value).toBe("navigated elsewhere");
+  });
+
+  it("keeps contexts independent of one another", () => {
+    const other: Context = {
+      id: "tab-2",
+      type: "tab",
+      providerId: "ui",
+      label: "Other",
+      value: "other text",
+      timestamp: 0,
+    };
+    const first = dropUnchangedContexts([page("p")], new Set());
+
+    const second = dropUnchangedContexts(
+      [page("p"), other],
+      new Set(first.fingerprints),
+    );
+
+    expect(second.contexts[0]?.value).toContain("unchanged");
+    expect(second.contexts[1]?.value).toBe("other text");
   });
 });

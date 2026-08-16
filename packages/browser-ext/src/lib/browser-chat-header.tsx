@@ -503,26 +503,26 @@ export function BrowserChatHeader({
         className={cn("flex items-center justify-between px-3 py-2", className)}
         {...props}
       >
-        {/* Left side - New chat: compose icon only, no "+" and no label. */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleNewChat}
-          title={t("common.newChat")}
-          className="size-8"
-        >
-          <SquarePenIcon className="size-4" />
-        </Button>
+        {/* Left side - one overflow menu (history + settings) */}
+        <HeaderMenu
+          currentConversationId={currentConversationId}
+          onConversationSelect={handleConversationSelect}
+          onNewConversation={handleNewChat}
+          onOpenSettings={handleOpenOptions}
+          onOpenHistory={handleOpenHistory}
+        />
 
-        {/* Right side - one overflow menu (history + settings) and close */}
+        {/* Right side - new chat, then the window actions at the far edge */}
         <div className="flex items-center gap-0.5">
-          <HeaderMenu
-            currentConversationId={currentConversationId}
-            onConversationSelect={handleConversationSelect}
-            onNewConversation={handleNewChat}
-            onOpenSettings={handleOpenOptions}
-            onOpenHistory={handleOpenHistory}
-          />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleNewChat}
+            title={t("common.newChat")}
+            className="size-8"
+          >
+            <SquarePenIcon className="size-4" />
+          </Button>
 
           {isEmbedded && (
             <>

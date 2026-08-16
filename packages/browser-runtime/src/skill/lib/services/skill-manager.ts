@@ -1,5 +1,6 @@
 import { zenfs } from "../../../lib/vm/zenfs-manager";
 // Import Grammar Correct skill
+import { diagramDesignSkill } from "../../built-in/diagram-design";
 import grammarCorrectMarkdown from "../../built-in/grammar-correct/SKILL.md?raw";
 import licenseText from "../../built-in/skill-creator-browser/LICENSE.txt?raw";
 // Import built-in skill content files
@@ -13,6 +14,10 @@ import writeFileScript from "../../built-in/skill-creator-browser/scripts/write_
 import uxAuditWalkthroughMarkdown from "../../built-in/ux-audit-walkthrough/SKILL.md?raw";
 // Import WCAG 2.2 Accessibility Audit skill
 import wcag22A11yAuditMarkdown from "../../built-in/wcag22-a11y-audit/SKILL.md?raw";
+
+// Bump when the vendored diagram-design content changes.
+const DIAGRAM_DESIGN_SYNC_VERSION = "2.4.0-eterna.1";
+
 import type { ParsedSkill, SkillMetadata } from "../../skill/types.js";
 import { skillStorage } from "../storage/skill-storage";
 import { zipSkillDirectory } from "../utils/zip-utils";
@@ -133,6 +138,10 @@ export class SkillManager {
       // Auto-load grammar-correct
       console.log("🔧 Loading built-in grammar-correct...");
       await this.loadBuiltinGrammarCorrect();
+
+      // Auto-load diagram-design
+      console.log("🔧 Loading built-in diagram-design...");
+      await this.loadBuiltinDiagramDesign();
 
       // Reload skills from storage after creating built-in skills
       console.log("📋 Reloading skills from storage...");
@@ -839,6 +848,60 @@ export class SkillManager {
       console.log("✅ Built-in grammar-correct loaded successfully");
     } catch (error) {
       console.error("❌ Failed to load built-in grammar-correct:", error);
+    }
+  }
+
+  /**
+   * Load the vendored diagram-design skill (MIT, cathrynlavery/diagram-design).
+   * 41 content files, so freshness is tracked with a version marker instead of
+   * comparing every file: bump DIAGRAM_DESIGN_SYNC_VERSION when the vendored
+   * content changes and the whole set is rewritten on next startup.
+   */
+  private async loadBuiltinDiagramDesign(): Promise<void> {
+    try {
+      const skillName = "diagram-design";
+      const skillPath = zenfs.getSkillPath(skillName);
+      const markerPath = `${skillPath}/.builtin-sync`;
+
+      const marker = (await zenfs.exists(markerPath))
+        ? String(await zenfs.readFile(markerPath, "utf8"))
+        : null;
+      if (marker !== DIAGRAM_DESIGN_SYNC_VERSION) {
+        await zenfs.mkdir(`${skillPath}/references`, { recursive: true });
+        await zenfs.writeFile(
+          `${skillPath}/SKILL.md`,
+          diagramDesignSkill.skillMd,
+        );
+        await zenfs.writeFile(
+          `${skillPath}/LICENSE.txt`,
+          diagramDesignSkill.license,
+        );
+        for (const [name, content] of Object.entries(
+          diagramDesignSkill.references,
+        )) {
+          await zenfs.writeFile(`${skillPath}/references/${name}`, content);
+        }
+        await zenfs.writeFile(markerPath, DIAGRAM_DESIGN_SYNC_VERSION);
+        console.log(`✅ diagram-design files written to ZenFS: ${skillPath}`);
+      }
+
+      const existingMetadata = await skillStorage.getSkillMetadata(skillName);
+      if (!existingMetadata) {
+        const diagramDesignMetadata: SkillMetadata = {
+          id: skillName,
+          name: skillName,
+          description:
+            "Editorial-quality diagram design system (27 types: architecture, flowchart, sequence, state machine, ER, timeline, swimlane, quadrant, org chart, Gantt, and more). Use when the user asks to draw, chart or diagram something and quality matters: load the skill, pick the type, author a single inline SVG per its design rules, and deliver it via render_diagram's svg input.",
+          version: "2.4.0",
+          uploadedAt: Date.now(),
+          enabled: true,
+        };
+        await skillStorage.saveSkillMetadata(diagramDesignMetadata);
+      }
+
+      console.log("✅ Built-in diagram-design loaded successfully");
+    } catch (error) {
+      console.error("❌ Failed to load built-in diagram-design:", error);
     }
   }
 }

@@ -29,14 +29,15 @@ export const browserToolSchemas: ToolSchema[] = [
   {
     name: "render_diagram",
     description:
-      "Draw a diagram the user will see rendered as a real picture. This is the ONLY way to draw — never sketch diagrams, timelines, trees or charts out of text characters in a reply; that art does not render. Use it when the shape of the answer IS the answer: a flow, sequence, hierarchy, state machine, timeline, comparison or architecture. The diagram appears in a narrow sidebar, so prefer top-down layouts, keep labels to a few words, and stay under roughly a dozen nodes. Skip it when a sentence or list already answers the question.",
+      "Draw a diagram the user will see rendered as a real picture. This is the ONLY way to draw — never sketch diagrams, timelines, trees or charts out of text characters in a reply; that art does not render. Use it when the shape of the answer IS the answer: a flow, sequence, hierarchy, state machine, timeline, comparison or architecture. Provide exactly ONE of: `mermaid` (quick structural diagrams) or `svg` (a single self-contained inline <svg> — the editorial path; load the diagram-design skill first and follow its type reference). The diagram appears in a narrow sidebar and can be opened full-page, so prefer top-down layouts and short labels. Skip it when a sentence or list already answers the question.",
     inputSchema: {
       type: "object",
       properties: {
         mermaid: { type: "string" },
+        svg: { type: "string" },
         title: { type: "string" },
       },
-      required: ["mermaid"],
+      required: [],
     },
   },
   // ===== Browser Tools =====

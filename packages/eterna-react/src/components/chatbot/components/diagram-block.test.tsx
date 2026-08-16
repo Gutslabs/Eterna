@@ -54,6 +54,37 @@ describe("DiagramBlock", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("renders authored svg input after sanitizing it", async () => {
+    const { container } = renderBlock(
+      <DiagramBlock
+        part={toolPart({
+          svg:
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" onload="alert(1)">' +
+            "<script>alert(2)</script>" +
+            '<rect width="4" height="4"/></svg>',
+          title: "Mimari",
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      const svg = container.querySelector("svg");
+      expect(svg).toBeTruthy();
+      expect(svg?.hasAttribute("onload")).toBe(false);
+      expect(container.querySelector("script")).toBeNull();
+      expect(container.querySelector("rect")).toBeTruthy();
+    });
+  });
+
+  it("falls back to readable source when authored svg cannot be sanitized", async () => {
+    renderBlock(
+      <DiagramBlock part={toolPart({ svg: "<div>not an svg</div>" })} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/not an svg/)).toBeTruthy();
+    });
+  });
+
   it("shows the title and keeps the source readable when rendering fails", async () => {
     // jsdom has no SVG layout, so mermaid always fails here — which is exactly
     // the environment to prove the fallback: the answer must stay salvageable

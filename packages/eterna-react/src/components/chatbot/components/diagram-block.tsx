@@ -1,4 +1,5 @@
-import { memo, useEffect, useId, useState } from "react";
+import { memo, useEffect, useId, useMemo, useState } from "react";
+import { sanitizeSvgOuterHtml } from "../../../lib/sanitize-svg";
 import { useTheme } from "../../../theme/context";
 import type { UIToolPart } from "../../../types";
 import { useExternalPreview } from "../../preview/external-preview";
@@ -21,18 +22,34 @@ export const DiagramBlock = memo(function DiagramBlock({
 }: {
   part: UIToolPart;
 }) {
-  const input = part.input as { mermaid?: unknown; title?: unknown } | null;
+  const input = part.input as {
+    mermaid?: unknown;
+    svg?: unknown;
+    title?: unknown;
+  } | null;
   const source = typeof input?.mermaid === "string" ? input.mermaid.trim() : "";
+  const rawAuthored = typeof input?.svg === "string" ? input.svg.trim() : "";
   const title = typeof input?.title === "string" ? input.title : null;
+
+  // The editorial path: SVG authored by the model under the diagram-design
+  // skill. Sanitized with the same policy as the page modal — the source is
+  // model output, and page content could have prompted something hostile into
+  // it. Derived (not state) so streaming tool arguments never freeze a
+  // half-received document.
+  const authoredSvg = useMemo(
+    () => (rawAuthored ? sanitizeSvgOuterHtml(rawAuthored) : null),
+    [rawAuthored],
+  );
 
   const { effectiveTheme } = useTheme();
   const openExternal = useExternalPreview();
   const renderId = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const [svg, setSvg] = useState<string | null>(null);
+  const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const svg = authoredSvg ?? mermaidSvg;
 
   useEffect(() => {
-    if (!source) return;
+    if (!source || rawAuthored) return;
     let cancelled = false;
     setFailed(false);
     import("@streamdown/mermaid")
@@ -41,7 +58,7 @@ export const DiagramBlock = memo(function DiagramBlock({
           theme: effectiveTheme === "dark" ? "dark" : "default",
         });
         const rendered = await instance.render(`eterna-${renderId}`, source);
-        if (!cancelled) setSvg(rendered.svg);
+        if (!cancelled) setMermaidSvg(rendered.svg);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -49,9 +66,9 @@ export const DiagramBlock = memo(function DiagramBlock({
     return () => {
       cancelled = true;
     };
-  }, [source, effectiveTheme, renderId]);
+  }, [source, rawAuthored, effectiveTheme, renderId]);
 
-  if (!source) return null;
+  if (!source && !rawAuthored) return null;
 
   return (
     <div className="w-full py-1">
@@ -81,11 +98,11 @@ export const DiagramBlock = memo(function DiagramBlock({
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         )
-      ) : failed ? (
-        // Invalid mermaid from the model: show the source instead of nothing,
-        // so the answer is still salvageable.
+      ) : failed || (rawAuthored && !authoredSvg) ? (
+        // Invalid mermaid or unsanitizable SVG from the model: show the source
+        // instead of nothing, so the answer is still salvageable.
         <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-muted/30 p-3 font-mono text-[12px] text-muted-foreground">
-          {source}
+          {source || rawAuthored}
         </pre>
       ) : (
         <div className="h-24 animate-pulse rounded-xl border border-border bg-muted/30" />

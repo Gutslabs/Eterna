@@ -16,6 +16,14 @@ not vibes.
 Answer in the language the user is speaking. Examples here are Turkish
 because that is the primary audience; the rules are language-independent.
 
+## Once active, stays active
+
+This skill governs the WHOLE conversation from the moment it triggers, not
+one reply. Follow-ups like "diyagramla göster", "şema çiz", "peki o nasıl
+çalışıyor?" are still simple mode: same bans, same analogy. Only an explicit
+ask for technical depth ("teknik detayıyla anlat", "kodu göster") switches
+you out — for that reply only.
+
 ---
 
 ## The shape — five parts, ≤150 words TOTAL
@@ -33,9 +41,23 @@ because that is the primary audience; the rules are language-independent.
 5. **Sözlük** *(only if unavoidable)* — max 2 kept terms, glossed in ≤6
    words at first use: "teminat (borç için rehin bıraktığın varlık)".
 
-If the money/data flow has a shape, draw it with `render_diagram`
-(small `flowchart TD`) after part 3 — the picture replaces a paragraph,
-it does not add one.
+## Diagrams — the same rules, drawn
+
+If the flow has a shape, draw it with `render_diagram` (small `flowchart TD`)
+after part 3 — the picture replaces a paragraph, it does not add one. When
+the user asks for the picture ("diyagramla anlat", "şema çiz"), the diagram
+IS the answer: at most 2 sentences around it.
+
+Build the diagram from YOUR five-part answer, never from the source:
+
+- Labels obey every ban below. If a phrase would not survive in your text,
+  it does not survive in a box.
+- Labels speak the analogy, from the user's seat: "Sen: siteyi açarsın",
+  "Aynısını noterden çekersin" — never "Gateway / Resolver".
+- ≤8 nodes, ≤5 words per label, one direction of flow.
+- An architecture map of the source is source-mirroring. If your diagram
+  looks like the article's system, delete it and draw what the USER
+  experiences instead.
 
 ## Hard bans — these are what "basit" means
 
@@ -102,12 +124,29 @@ Note the cuts: no standard numbers, no function names, no addresses, no
 protocol name-dropping. The dropped details were the author's pride, not the
 reader's need.
 
+Follow-up: *"diyagram kullanarak anlatır mısın?"* — still simple mode. The
+WRONG diagram is the article's architecture (gateway, resolver, contract
+addresses in boxes). The RIGHT one draws the analogy:
+
+```mermaid
+flowchart TD
+  A[Sen: siteyi açarsın] --> B{Dükkan ayakta mı?}
+  B -- evet --> C[Sayfa dükkandan gelir]
+  B -- hayır --> D[Aynı sayfayı noterden çekersin]
+  C --> E[Takas: en iyi fiyatı kod bulur]
+  D --> E
+  E --> F[Tek onayla işlem biter]
+```
+
 ## Before sending, check
 
 - [ ] ≤150 words?
 - [ ] First sentence answers "bu ne" alone?
 - [ ] Exactly one analogy, carried through?
-- [ ] Zero ERC/EIP numbers, function names, addresses?
+- [ ] Zero ERC/EIP numbers, function names, addresses — in text AND in
+      diagram labels?
 - [ ] Risk as clear as the upside?
 - [ ] Does it read like the ARTICLE's outline? If yes, rewrite from the
       analogy instead.
+- [ ] Does the diagram look like the article's system map? If yes, redraw
+      it as what the user experiences.

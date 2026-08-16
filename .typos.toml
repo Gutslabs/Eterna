@@ -26,3 +26,6 @@ CertiK = "CertiK"
 # From glob patterns like "*[Ss]earch*" in the tool docs: the checker reads the
 # tail of the character class as a word.
 earch = "earch"
+# Turkish for "plain" — appears in skill trigger phrases ("sade bir dille"),
+# not a typo of "sad".
+sade = "sade"

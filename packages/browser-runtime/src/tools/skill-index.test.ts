@@ -52,4 +52,34 @@ describe("matchSkillTriggers", () => {
   ])("does not route %j", (text) => {
     expect(matchSkillTriggers(text)).toEqual([]);
   });
+
+  it.each([
+    "bunu basitçe anlatsana",
+    "basitce anlatır mısın",
+    "basit anlat şunu",
+    "basit bir şekilde açıkla",
+    "basit bir sekilde anlatir misin",
+    "basit anlatım kullanarak anlatır mısın",
+    "aptala anlatır gibi anlat",
+    "5 yaşındaymışım gibi anlat",
+    "beş yaşında birine anlatır gibi",
+    "sade bir dille anlat",
+    "olabildiğince basite indirge",
+    "eli5 this thread",
+    "explain this to me simply",
+    "explain it like i'm 5",
+    "put it in layman's terms",
+  ])("routes %j to basit-anlatim", (text) => {
+    expect(matchSkillTriggers(text)).toEqual(["basit-anlatim"]);
+  });
+
+  it.each([
+    "diyagram kullanarak anlatır mısın",
+    "bu makaleyi özetle",
+    "explain this error",
+    "what is a simple moving average?",
+    "basit bir soru soracağım",
+  ])("does not route %j to basit-anlatim", (text) => {
+    expect(matchSkillTriggers(text)).toEqual([]);
+  });
 });

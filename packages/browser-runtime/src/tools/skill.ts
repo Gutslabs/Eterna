@@ -101,6 +101,14 @@ export const SKILL_TURN_TRIGGERS: Array<{ name: string; pattern: RegExp }> = [
     pattern:
       /\b(correct|fix|check)\s+(my\s+|the\s+|this\s+)?(grammar|english)\b|\bgrammar\s*(check|fix|correct(ion)?)\b|\b(make|sound)\s+(it|this)?\s*(more\s+)?native\b|\bis\s+(this|my)\s+(english\s+)?correct\b|ingilizce(mi|yi|sini)?\s+düzelt|grammar\s*düzelt/i,
   },
+  {
+    // Diacritic-tolerant on purpose: users type "basitce" as often as
+    // "basitçe". Turkish verb stems (anlat-, açıkla-) match all suffixed
+    // forms ("anlatsana", "anlatır mısın") by prefix.
+    name: "basit-anlatim",
+    pattern:
+      /basit([çc]e|\s+bir\s+[şs]ekilde)?\s+(anlat|a[çc][ıi]kla)|basit\s*anlat[ıi]m|aptala\s+anlat|(be[şs]|5)\s+ya[şs][ıi]nda\S*\s+(gibi|birine|[çc]ocu[ğg]a)|[çc]ocu[ğg]a\s+anlat[ıi]r\s+gibi|sade\s+bir\s+dille|basite\s+indirge|kolayca\s+anlat|\beli5\b|explain\s+(\S+\s+){0,3}(simply|like\s+i\W?a?m\s+(five|5))|in\s+layman\W?s?\s+terms|dumb\s+it\s+down/i,
+  },
 ];
 
 export interface SkillTurnContext {
@@ -140,7 +148,7 @@ export async function resolveSkillTurnContexts(
         type: "custom",
         label: `skill: ${name}`,
         value: [
-          `[Skill activated: ${name} — this request matches its triggers. Apply the instructions below to THIS reply.]`,
+          `[Skill activated: ${name} — this request matches its triggers. Apply the instructions below starting with this reply; the skill itself says how long it stays active.]`,
           "",
           content,
         ].join("\n"),

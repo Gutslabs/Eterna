@@ -5,88 +5,109 @@ description: Explain complex crypto/DeFi and technical concepts so simply that a
 
 # Basit Anlatım
 
-Turn a complex concept into an explanation a smart 12-year-old understands on
-first read. Simple does not mean less true — it means no jargon, no
-abstraction, no filler. Inspired by controlled-language standards (STE): hard,
-checkable rules, not vibes.
+You answer ONE question: **"bu ne, ve neden umurumda olsun?"**
 
-Answer in the language the user is speaking. The examples here are Turkish
+You are NOT summarizing the source. A simplified summary of a technical
+article is still a technical article. Find the single new idea the author is
+excited about, and explain that idea like you would at a dinner table.
+Inspired by controlled-language standards (STE): hard, checkable rules,
+not vibes.
+
+Answer in the language the user is speaking. Examples here are Turkish
 because that is the primary audience; the rules are language-independent.
 
 ---
 
-## The shape of every answer
+## The shape — five parts, ≤150 words TOTAL
 
-Five parts, in this order. Nothing else.
+1. **Tek cümle** — what it is, zero jargon. Bold it.
+2. **Benzetme** — ONE everyday analogy (rehinci, vadeli hesap, emanetçi,
+   otomat, apartman panosu, noter). Exactly one; a second analogy halves
+   clarity. Carry it through the rest of the answer.
+3. **Adım adım** — 3-4 numbered steps of what happens when the USER uses it,
+   with concrete numbers ("100 dolarlık ETH", "%5"). User's view only —
+   never the implementation's view.
+4. **Risk / sınır** — one honest paragraph: what can go wrong, what the
+   catch is. Simplifying the upside but hiding the downside is how people
+   get hurt.
+5. **Sözlük** *(only if unavoidable)* — max 2 kept terms, glossed in ≤6
+   words at first use: "teminat (borç için rehin bıraktığın varlık)".
 
-1. **Tek cümle** — what it IS, one sentence, zero jargon. If you cannot say it
-   in one sentence, you do not understand it yet; re-read the source.
-2. **Benzetme** — ONE everyday analogy, drawn from daily life the user already
-   knows: rehinci, vadeli hesap, emanetçi, pazarcı, apartman aidatı, otopark.
-   Exactly one. Two analogies are twice as confusing, not twice as clear.
-3. **Adım adım** — how it works, 3-5 numbered steps, with concrete numbers.
-   "1000 dolar yatırdın, yılda %5 → 50 dolar" beats "faiz kazanırsınız".
-4. **Risk** — one honest paragraph: what can go wrong and what you lose.
-   Simplifying the upside but not the downside is how people get hurt.
-5. **Sözlük** *(only if unavoidable)* — at most 3 terms you had to keep,
-   each with a plain gloss of ≤6 words in parentheses at FIRST use, e.g.
-   "teminat (borç için rehin bıraktığın varlık)".
+If the money/data flow has a shape, draw it with `render_diagram`
+(small `flowchart TD`) after part 3 — the picture replaces a paragraph,
+it does not add one.
 
-If the money/data flow has a shape, draw it: call `render_diagram` with a
-small `flowchart TD` after part 3. A picture of who-gives-what-to-whom often
-replaces a whole paragraph.
+## Hard bans — these are what "basit" means
 
-## Hard rules
-
-- Sentences ≤ 15 words. Paragraphs ≤ 3 sentences.
-- Active voice. "Protokol parayı kilitler", not "para protokol tarafından
-  kilitlenir".
-- Numbers over adjectives: "3-4 gün", not "birkaç gün"; "%5", not "düşük faiz".
-- Every kept English term gets a Turkish gloss on first use, then use it
-  freely.
-- No hedging filler: "aslında", "temel olarak", "bir nevi", "karmaşık görünse
-  de" — delete them all.
-- No academic framing: never "bu kavramı anlamak için önce X'i anlamalıyız".
-  Start with the answer, not the prerequisites.
-- Never invent numbers about a SPECIFIC product. Generic teaching numbers
-  ("diyelim 1000 dolar") are fine; real APYs/fees must come from the page or
-  be marked "örnek".
+- **No source-mirroring.** Never walk the article section by section, never
+  reuse its headings, never answer in "1. Arayüz... 2. Gateway... 3. Swap..."
+  outline form. One flowing answer, one numbered list, no section headers.
+- **No implementation artifacts.** Standard numbers (ERC-8244, EIP-170),
+  function names (`html()`, `deployNext()`), contract addresses, protocol
+  brand lists — all deleted. A standard's number is decoration, not
+  information. Exception: the user explicitly asks about the code.
+- **No hedging filler**: "aslında", "temel olarak", "bir nevi", "karmaşık
+  görünse de".
+- **No prerequisite lectures**: never "önce X'i anlamak gerekiyor". Start
+  with the answer.
+- Sentences ≤ 15 words. Active voice. Numbers over adjectives ("3 gün",
+  not "birkaç gün").
+- Never invent numbers for a SPECIFIC product; teaching numbers are marked
+  ("diyelim 1000 dolar"). Real figures must come from the page.
 - Do not simplify away the truth. If the honest answer is "kimse garanti
   etmiyor", say exactly that.
 
-## Canonical example
+## Canonical example 1 — a concept
 
 User: *"kripto'da borrowing/lending ne ya? basitçe anlatsana"*
 
 > **Kripto'da borç verme, rehinci dükkanının dijital hali.**
 >
-> Rehinciye altın bırakırsın, sana nakit verir. Geri ödeyince altını geri
-> alırsın. Ödemezsen rehinci altını satar, parasını çıkarır.
+> Rehinciye altın bırakırsın, nakit alırsın. Geri ödeyince altın geri gelir.
+> Ödemezsen rehinci altını satar.
 >
-> Adım adım:
-> 1. Elinde 1500 dolarlık ETH var ama satmak istemiyorsun.
-> 2. ETH'yi protokole rehin bırakırsın (teminat — borç için kilitlediğin
->    varlık).
-> 3. Karşılığında 1000 dolar stablecoin borç alırsın.
-> 4. Borcu + yıllık ~%5 faizi geri ödersin, ETH'n geri gelir.
-> 5. ETH'nin fiyatı çok düşerse protokol ETH'ni otomatik satar
->    (liquidation — rehinin satılması). Borç kapanır, kalan sana döner.
+> 1. Elinde 1500 dolarlık ETH var, satmak istemiyorsun.
+> 2. ETH'yi rehin bırakır, 1000 dolar borç alırsın.
+> 3. Borcu + yılda ~%5 faizi ödersin, ETH geri gelir.
+> 4. ETH'nin fiyatı çok düşerse sistem rehini otomatik satar, borç kapanır.
 >
-> Diğer taraf da var: parasını yatıran (lender) o ~%5 faizi kazanır. Banka
-> mevduatı gibi, ama banka yok — kurallar kodda.
+> Parayı yatıran taraf da o faizi kazanır. Banka mevduatı gibi — ama banka
+> yok, kurallar kodda.
 >
 > **Risk:** Fiyat hızlı düşerse ETH'n zararına satılır. Koddaki bir açık
-> paranı çaldırabilir. Kimse mevduat sigortası vermiyor.
+> paranı çaldırabilir. Mevduat sigortası yok.
 
-Note what the example does NOT do: no "likidite havuzu", no "akıllı kontrat
-mimarisi", no history lesson. One analogy, real numbers, honest risk.
+## Canonical example 2 — a technical article
+
+The article is 1500 words about a "fully onchain app": UI stored in smart
+contracts, chunked across 10 contracts due to size limits, a DAO versioning
+function, a gateway domain, deterministic routing... The WRONG answer walks
+those sections. The RIGHT answer finds the one idea:
+
+> **Bu uygulamanın sitesi bile blockchain'in içinde — kapatılabilecek hiçbir
+> parçası yok.**
+>
+> Normal bir dapp, camına menü asılmış dükkan gibidir: dükkan kapanırsa menü
+> de gider. Burada menü noterde saklı; dükkan yansa da noterden aynısını
+> alırsın.
+>
+> 1. Siteyi açarsın — sayfa sunucudan değil, zincirdeki kayıttan gelir.
+> 2. Takas istersin — en iyi fiyatı zincirdeki kod bulur, aracı API yok.
+> 3. Alan adı kapansa bile aynı sayfayı zincirden çekebilirsin.
+>
+> **Sınır:** "Durdurulamaz" kod, hatalı çıkarsa da durdurulamaz. Yeni sürüm
+> çıkarmak 3 gün beklemeli; acil bir açık o pencerede seni koruyamayabilir.
+
+Note the cuts: no standard numbers, no function names, no addresses, no
+protocol name-dropping. The dropped details were the author's pride, not the
+reader's need.
 
 ## Before sending, check
 
-- [ ] Could a smart 12-year-old repeat the first sentence back correctly?
-- [ ] Exactly one analogy?
-- [ ] Every step has a concrete number?
-- [ ] Is the risk section as clear as the upside?
-- [ ] Zero unglossed jargon?
-
-If any box fails, rewrite that part. Do not send and apologize.
+- [ ] ≤150 words?
+- [ ] First sentence answers "bu ne" alone?
+- [ ] Exactly one analogy, carried through?
+- [ ] Zero ERC/EIP numbers, function names, addresses?
+- [ ] Risk as clear as the upside?
+- [ ] Does it read like the ARTICLE's outline? If yes, rewrite from the
+      analogy instead.

@@ -8,6 +8,7 @@ import type { AppSettings, Eterna } from "@eterna/core";
 import ChatBot from "@eterna/react/components/chatbot";
 import { ErrorBoundary } from "@eterna/react/components/error/ErrorBoundary";
 import type { InterventionMode } from "@eterna/react/components/intervention";
+import { ExternalPreviewProvider } from "@eterna/react/components/preview/external-preview";
 import { useChatConfig } from "@eterna/react/hooks";
 import { I18nProvider } from "@eterna/react/i18n/context";
 import type { Language } from "@eterna/react/i18n/types";
@@ -50,6 +51,7 @@ import {
   bindOpenEternaShortcut,
   closeEternaPanel,
 } from "../../lib/open-eterna-shortcut";
+import { openPreviewOnPage } from "../../lib/page-preview-opener";
 import { PromptLibrary } from "../../lib/prompt-library";
 import { getRemoteBrowserAgent } from "../../lib/remote-agent";
 import { SelectionAutoSend } from "../../lib/selection-autosend";
@@ -241,50 +243,52 @@ function ChatApp() {
   }
 
   return (
-    <InputModeProvider>
-      <InterventionModeProvider
-        mode={interventionMode}
-        setMode={setInterventionMode}
-      >
-        <ChatBot
-          agent={agent}
-          configError={error}
-          initialSettings={settings}
-          storageAdapter={chromeStorageAdapter}
-          handlers={{
-            checkAuthBeforeSend: handleCheckAuth,
-          }}
-          components={{
-            Header: BrowserChatHeader,
-            MessageList: BrowserMessageList,
-            InputArea: BrowserChatInputArea,
-            WelcomeScreen: BrowserWelcomeScreen,
-          }}
-          slots={{
-            afterMessages: () => (
-              <>
-                <InterventionUI
-                  mode={interventionMode}
-                  onModeChange={setInterventionMode}
-                />
-                <ChatImagesListener />
-                <SelectionAutoSend />
-              </>
-            ),
-            messageActions: (props) => <BrowserMessageActions {...props} />,
-            inputToolbar: (props) => <ChatInputToolbar {...props} />,
-            composerTools: () => (
-              <>
-                <LocalBackendIndicator />
-                <AutoScreenshotToggle />
-              </>
-            ),
-            inputHeader: () => <PromptLibrary />,
-            promptExtras: () => <BrowserContextLoader />,
-          }}
-        />
-      </InterventionModeProvider>
-    </InputModeProvider>
+    <ExternalPreviewProvider opener={openPreviewOnPage}>
+      <InputModeProvider>
+        <InterventionModeProvider
+          mode={interventionMode}
+          setMode={setInterventionMode}
+        >
+          <ChatBot
+            agent={agent}
+            configError={error}
+            initialSettings={settings}
+            storageAdapter={chromeStorageAdapter}
+            handlers={{
+              checkAuthBeforeSend: handleCheckAuth,
+            }}
+            components={{
+              Header: BrowserChatHeader,
+              MessageList: BrowserMessageList,
+              InputArea: BrowserChatInputArea,
+              WelcomeScreen: BrowserWelcomeScreen,
+            }}
+            slots={{
+              afterMessages: () => (
+                <>
+                  <InterventionUI
+                    mode={interventionMode}
+                    onModeChange={setInterventionMode}
+                  />
+                  <ChatImagesListener />
+                  <SelectionAutoSend />
+                </>
+              ),
+              messageActions: (props) => <BrowserMessageActions {...props} />,
+              inputToolbar: (props) => <ChatInputToolbar {...props} />,
+              composerTools: () => (
+                <>
+                  <LocalBackendIndicator />
+                  <AutoScreenshotToggle />
+                </>
+              ),
+              inputHeader: () => <PromptLibrary />,
+              promptExtras: () => <BrowserContextLoader />,
+            }}
+          />
+        </InterventionModeProvider>
+      </InputModeProvider>
+    </ExternalPreviewProvider>
   );
 }
 

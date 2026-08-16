@@ -9,6 +9,7 @@ import {
   updateBookmarkTool,
 } from "./bookmark";
 import { computerTool } from "./computer";
+import { renderDiagramTool } from "./diagram";
 import {
   clickTool,
   fillElementByUidTool,
@@ -72,7 +73,7 @@ import { getYoutubeTranscriptTool } from "./youtube-transcript";
 
 /**
  * All browser tools registered for AI use
- * Total: 57 tools (53 core + 4 intervention tools)
+ * Total: 58 tools (54 core + 4 intervention tools)
  *
  * Deliberately NOT registered:
  * - duplicate_tab (not in eterna)
@@ -158,6 +159,9 @@ const browserFunctionTools: BrowserFunctionTool[] = [
 
   // Plan (1 tool) — Codex-style visible todo list
   updatePlanTool,
+
+  // Diagram (1 tool) — the only sanctioned way to draw (schema forces mermaid)
+  renderDiagramTool,
 
   // Screenshot (3 tools)
   captureScreenshotTool,

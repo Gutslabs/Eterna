@@ -31,6 +31,19 @@ describe("buildSystemPrompt", () => {
     }
   });
 
+  it("routes drawing through render_diagram in both variants", () => {
+    // Prompt-level "write mermaid, never ASCII" directives failed reproducibly
+    // (the model drew pipe-and-dash art even with the ban as the entire system
+    // prompt); the schema-forced tool is what actually works, so the prompt
+    // only points at it. Drawing is a surface property, not a tool-bundle one —
+    // the pointer must survive the text-only/background builds too.
+    for (const vision of [true, false]) {
+      const prompt = buildSystemPrompt({ vision });
+      expect(prompt).toContain("render_diagram");
+      expect(prompt).toContain("Never sketch diagrams");
+    }
+  });
+
   it("exports the full-capability prompt for backwards compatibility", () => {
     expect(SYSTEM_PROMPT).toBe(buildSystemPrompt({ vision: true }));
   });

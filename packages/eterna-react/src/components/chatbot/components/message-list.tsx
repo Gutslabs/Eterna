@@ -12,6 +12,7 @@ import { AgentProgress } from "../../beui/agents/loading-states/agent-progress";
 import { useComponentsContext } from "../context";
 import { ActivityRail } from "./activity-rail";
 import { buildTurnBlocks } from "./activity-steps";
+import { DiagramBlock } from "./diagram-block";
 import { MessageItem } from "./message-item";
 import { collectTurnCitations } from "./turn-citations";
 import { WelcomeScreen } from "./welcome-screen";
@@ -116,6 +117,9 @@ const TurnAssistantBlock = memo(function TurnAssistantBlock({
               isLive={isTrailing && trailingActivityLive}
             />
           );
+        }
+        if (block.type === "diagram") {
+          return <DiagramBlock key={block.key} part={block.part} />;
         }
         const isLastBubble = isLastTurn && index === blocks.length - 1;
         return (

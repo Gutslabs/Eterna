@@ -7,7 +7,8 @@ export type ActivityStep =
 
 export type TurnBlock =
   | { type: "activity"; key: string; steps: ActivityStep[] }
-  | { type: "message"; key: string; message: UIMessage };
+  | { type: "message"; key: string; message: UIMessage }
+  | { type: "diagram"; key: string; part: UIToolPart };
 
 export const BROWSER_ACTIVITY_SEPARATOR = "\u001e";
 
@@ -68,6 +69,15 @@ export function buildTurnBlocks(assistantMessages: UIMessage[]): TurnBlock[] {
     message.parts.forEach((part, index) => {
       const key = `${message.id}-${index}`;
       if (part.type === "tool") {
+        // A drawn diagram is part of the ANSWER, not plumbing: as a rail step
+        // it would vanish into the collapsed "1 step" row when the turn
+        // settles. It breaks the activity run and stands as its own block,
+        // exactly like a text bubble.
+        if (part.toolName === "render_diagram") {
+          openActivity = null;
+          blocks.push({ type: "diagram", key, part });
+          return;
+        }
         pushStep(key, { kind: "tool", key, part });
         return;
       }

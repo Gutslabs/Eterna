@@ -20,6 +20,7 @@ import {
 } from "../../lib/page-serialization";
 import { readSidebarOpen } from "../../lib/sidebar-open-flag";
 import { suppressStaleContextErrors } from "../../lib/suppress-stale-errors";
+import { type PagePreviewPayload, showPagePreview } from "./page-preview";
 
 // Quiet the benign "Extension context invalidated" noise a stale content script
 // emits for a moment after the extension is reloaded or updated.
@@ -360,6 +361,22 @@ function handleMessage(
         });
       }
     })();
+    return true;
+  }
+
+  if (message?.request === "eterna-show-preview") {
+    if (!isTopFrame) return false;
+    try {
+      const shown = showPagePreview(
+        (message as { payload?: PagePreviewPayload }).payload ?? {},
+      );
+      sendResponse({ success: shown });
+    } catch (error) {
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     return true;
   }
 

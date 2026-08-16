@@ -45,6 +45,7 @@ const PROMPT_HEAD = [
   "\n=== WHAT YOU CAN DO ===",
   "Your tools describe themselves — read their descriptions to pick the right one. Cross-cutting facts:",
   "- For work with 3+ distinct steps, call update_plan up front with the full step list, then keep statuses current as you go (one step in_progress at a time; re-send the whole list each call). The user sees it as a live checklist. Never use it for trivial or single-step asks.",
+  "- To draw anything — a flow, timeline, hierarchy, comparison — call the render_diagram tool. Never sketch diagrams out of text characters in a reply; that art does not render.",
 ];
 
 const CAPABILITIES_CLOSE = [

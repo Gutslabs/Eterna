@@ -3,6 +3,7 @@
 import { CheckIcon, CopyIcon, FileTextIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useExternalPreview } from "../preview/external-preview";
 
 const TEXT_EXTENSIONS = ["txt", "md", "json", "csv", "log"];
 
@@ -149,8 +150,33 @@ export function ImageLightbox({
   onClose: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const openExternal = useExternalPreview();
+  // "pending" while the host tries to project the image onto the page — the
+  // in-panel overlay must not flash open behind a preview that is about to
+  // appear at full page size.
+  const [mode, setMode] = useState<"pending" | "internal">(
+    openExternal ? "pending" : "internal",
+  );
 
   useEffect(() => {
+    if (!openExternal) return;
+    let cancelled = false;
+    openExternal({ src, title: alt })
+      .then((handled) => {
+        if (cancelled) return;
+        if (handled) onClose();
+        else setMode("internal");
+      })
+      .catch(() => {
+        if (!cancelled) setMode("internal");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openExternal, src, alt, onClose]);
+
+  useEffect(() => {
+    if (mode !== "internal") return;
     rootRef.current?.requestFullscreen?.().catch(() => {
       /* surface denied fullscreen — in-panel overlay is the fallback */
     });
@@ -169,7 +195,9 @@ export function ImageLightbox({
         void document.exitFullscreen().catch(() => {});
       }
     };
-  }, [onClose]);
+  }, [onClose, mode]);
+
+  if (mode === "pending") return null;
 
   return createPortal(
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismissal, Escape handled globally

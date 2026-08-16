@@ -7,12 +7,15 @@
 # breaks the translation.
 # Exclude the grammar-correct skill: its canonical example is deliberately
 # misspelled user input, and "fixing" it destroys what the example teaches.
+# Exclude basit-anlatim: its rules and canonical example are intentionally
+# Turkish, which the checker reads as misspelled English.
 extend-exclude = [
   "README*.md",
   "**/bundled-modules/**",
   "mcp-bridge/**",
   "**/i18n/locales/!(en).json",
   "**/skill/built-in/grammar-correct/**",
+  "**/skill/built-in/basit-anlatim/**",
 ]
 
 [default.extend-identifiers]

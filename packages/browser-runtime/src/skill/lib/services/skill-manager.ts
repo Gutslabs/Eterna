@@ -1,5 +1,6 @@
 import { zenfs } from "../../../lib/vm/zenfs-manager";
 // Import Grammar Correct skill
+import basitAnlatimMarkdown from "../../built-in/basit-anlatim/SKILL.md?raw";
 import { diagramDesignSkill } from "../../built-in/diagram-design";
 import grammarCorrectMarkdown from "../../built-in/grammar-correct/SKILL.md?raw";
 import licenseText from "../../built-in/skill-creator-browser/LICENSE.txt?raw";
@@ -142,6 +143,10 @@ export class SkillManager {
       // Auto-load diagram-design
       console.log("🔧 Loading built-in diagram-design...");
       await this.loadBuiltinDiagramDesign();
+
+      // Auto-load basit-anlatim
+      console.log("🔧 Loading built-in basit-anlatim...");
+      await this.loadBuiltinBasitAnlatim();
 
       // Reload skills from storage after creating built-in skills
       console.log("📋 Reloading skills from storage...");
@@ -902,6 +907,43 @@ export class SkillManager {
       console.log("✅ Built-in diagram-design loaded successfully");
     } catch (error) {
       console.error("❌ Failed to load built-in diagram-design:", error);
+    }
+  }
+
+  private async loadBuiltinBasitAnlatim(): Promise<void> {
+    try {
+      const skillName = "basit-anlatim";
+      const skillPath = zenfs.getSkillPath(skillName);
+      const skillMdPath = `${skillPath}/SKILL.md`;
+
+      // Built-in content is code-owned: sync the bundled SKILL.md whenever it
+      // changed, so shipped updates reach users (same policy as
+      // grammar-correct).
+      const existing = (await zenfs.exists(skillMdPath))
+        ? String(await zenfs.readFile(skillMdPath, "utf8"))
+        : null;
+      if (existing !== basitAnlatimMarkdown) {
+        await zenfs.mkdir(skillPath, { recursive: true });
+        await zenfs.writeFile(skillMdPath, basitAnlatimMarkdown);
+      }
+
+      const existingMetadata = await skillStorage.getSkillMetadata(skillName);
+      if (!existingMetadata) {
+        const basitAnlatimMetadata: SkillMetadata = {
+          id: skillName,
+          name: skillName,
+          description:
+            "Explain complex crypto/DeFi and technical concepts so simply that a smart 12-year-old gets it. Use when the user asks for a simple explanation ('basitçe anlat', 'aptala anlatır gibi anlat', 'ELI5', 'bu ne işe yarıyor?', 'explain simply') or reads a complex page/thread and asks what it means. Answers in the user's language, short and concrete, with one everyday analogy.",
+          version: "1.0.0",
+          uploadedAt: Date.now(),
+          enabled: true,
+        };
+        await skillStorage.saveSkillMetadata(basitAnlatimMetadata);
+      }
+
+      console.log("✅ Built-in basit-anlatim loaded successfully");
+    } catch (error) {
+      console.error("❌ Failed to load built-in basit-anlatim:", error);
     }
   }
 }

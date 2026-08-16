@@ -5,7 +5,7 @@ import type {
   SerializedDomSnapshot,
 } from "./types.js";
 
-const NODE_ID_ATTR = "data-aipex-nodeid";
+const NODE_ID_ATTR = "data-eterna-nodeid";
 const STATIC_TEXT_ROLE = "StaticText";
 const ROOT_ROLE = "RootWebArea";
 
@@ -528,8 +528,6 @@ function shouldIncludeElement(
   }
 
   const role = resolveRole(element);
-  const name = resolveAccessibleName(element, rootDocument);
-  const hasMeaningfulName = Boolean(name && name.trim().length > 1);
 
   if (INTERACTIVE_ROLES.has(role)) {
     return true;
@@ -559,16 +557,21 @@ function shouldIncludeElement(
     return true;
   }
 
-  if (!LAYOUT_ROLES.has(role) && hasMeaningfulName) {
+  // Everything below only applies to non-layout roles. Checking that first
+  // matters: `div`/`span` resolve to the layout role "generic", so for the most
+  // common elements on any page this skips both the accessible-name resolution
+  // and the full-subtree textContent scan below.
+  if (LAYOUT_ROLES.has(role)) {
+    return false;
+  }
+
+  const name = resolveAccessibleName(element, rootDocument);
+  if (name && name.trim().length > 1) {
     return true;
   }
 
   const normalizedText = normalizeTextContent(element.textContent || "");
-  if (normalizedText.length >= 2 && !LAYOUT_ROLES.has(role)) {
-    return true;
-  }
-
-  return false;
+  return normalizedText.length >= 2;
 }
 
 function resolveRole(element: Element): string {

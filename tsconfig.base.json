@@ -6,14 +6,14 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@aipexstudio/aipex-core": ["./packages/core/src"],
-      "@aipexstudio/aipex-core/*": ["./packages/core/src/*"],
-      "@aipexstudio/aipex-react": ["./packages/aipex-react/src"],
-      "@aipexstudio/aipex-react/*": ["./packages/aipex-react/src/*"],
-      "@aipexstudio/browser-runtime": ["./packages/browser-runtime/src"],
-      "@aipexstudio/browser-runtime/*": ["./packages/browser-runtime/src/*"],
-      "@aipexstudio/dom-snapshot": ["./packages/dom-snapshot/src"],
-      "@aipexstudio/dom-snapshot/*": ["./packages/dom-snapshot/src/*"]
+      "@eterna/core": ["./packages/core/src"],
+      "@eterna/core/*": ["./packages/core/src/*"],
+      "@eterna/react": ["./packages/eterna-react/src"],
+      "@eterna/react/*": ["./packages/eterna-react/src/*"],
+      "@eterna/browser-runtime": ["./packages/browser-runtime/src"],
+      "@eterna/browser-runtime/*": ["./packages/browser-runtime/src/*"],
+      "@eterna/dom-snapshot": ["./packages/dom-snapshot/src"],
+      "@eterna/dom-snapshot/*": ["./packages/dom-snapshot/src/*"]
     },
     "downlevelIteration": true,
     "esModuleInterop": true,

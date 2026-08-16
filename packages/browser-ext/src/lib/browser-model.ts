@@ -7,64 +7,55 @@
  * this module.
  */
 
-import type { AppSettings, FunctionTool } from "@aipexstudio/aipex-core";
+import { allBrowserTools, chromeStorageAdapter } from "@eterna/browser-runtime";
+import type { AppSettings, FunctionTool } from "@eterna/core";
 import {
   type AutomationMode,
   aisdk,
-  DEFAULT_APP_SETTINGS,
+  mergeAppSettings,
   STORAGE_KEYS,
   validateAutomationMode,
-} from "@aipexstudio/aipex-core";
-import { SYSTEM_PROMPT } from "@aipexstudio/aipex-react/components/chatbot/constants";
-import {
-  allBrowserTools,
-  chromeStorageAdapter,
-} from "@aipexstudio/browser-runtime";
+} from "@eterna/core";
 import {
   createAIProvider,
-  createCatGptGatewayProvider,
   createChatGptProvider,
-  createGeminiGatewayProvider,
+  createClaudeGatewayProvider,
+  createCliProxyProvider,
   isByokConfigured,
-  isCatGptGatewayModel,
   isChatGptModel,
   isClaudeGatewayModel,
-  isGeminiGatewayModel,
-  isXaiGatewayModel,
+  isCliProxyModel,
   normalizeCodexModel,
 } from "./ai-provider";
 
+export { modelSupportsVision } from "./model-capabilities";
+
 /**
- * Create the AI model for the given settings: ChatGPT subscription, local
- * gateways, or BYOK. There is no hosted fallback — an unconfigured model is
- * a configuration error surfaced to the user.
+ * Create the AI model for the given settings: the local CLIProxyAPI instance,
+ * the ChatGPT subscription, or BYOK. There is no hosted fallback — an
+ * unconfigured model is a configuration error surfaced to the user.
+ *
+ * CLIProxyAPI is checked first because it is the transport the model picker
+ * offers; the in-extension Codex path only serves settings that predate it.
  */
-export function createBrowserModel(
-  settings: AppSettings,
-  gatewayRouteId?: string,
-) {
+export function createBrowserModel(settings: AppSettings) {
+  if (settings.aiModel && isClaudeGatewayModel(settings.aiModel)) {
+    // Claude goes through the proxy's native Anthropic endpoint — the OpenAI
+    // translation buffers streams badly while thinking is enabled.
+    return aisdk(createClaudeGatewayProvider()(settings.aiModel));
+  }
+
+  if (settings.aiModel && isCliProxyModel(settings.aiModel)) {
+    // CLIProxyAPI path – local OAuth proxy serving Gemini (Antigravity), Grok
+    // (Grok Build), Claude (Claude Code) and Codex (ChatGPT) as one API
+    return aisdk(createCliProxyProvider()(settings.aiModel));
+  }
+
   if (isChatGptModel(settings.aiModel)) {
     // ChatGPT subscription path – Codex Responses API with OAuth
     return aisdk(
       createChatGptProvider()(normalizeCodexModel(settings.aiModel)),
     );
-  }
-
-  const gatewayModel = settings.aiModel;
-  if (gatewayModel && isCatGptGatewayModel(gatewayModel)) {
-    // CatGPT-Gateway path – local OpenAI-compatible server
-    return aisdk(createCatGptGatewayProvider(gatewayRouteId)(gatewayModel));
-  }
-
-  if (
-    settings.aiModel &&
-    (isGeminiGatewayModel(settings.aiModel) ||
-      isXaiGatewayModel(settings.aiModel) ||
-      isClaudeGatewayModel(settings.aiModel))
-  ) {
-    // CLIProxyAPI path – local OAuth proxy serving Gemini (Antigravity),
-    // Grok (Grok Build) and Claude (Claude Code) as one OpenAI-compatible API
-    return aisdk(createGeminiGatewayProvider()(settings.aiModel));
   }
 
   if (isByokConfigured(settings)) {
@@ -78,8 +69,8 @@ export function createBrowserModel(
   }
 
   throw new Error(
-    "No AI provider configured. Pick a model in Settings (ChatGPT sign-in, " +
-      "a local gateway, or your own API key).",
+    "No AI provider configured. Pick a model in Settings (a Codex, Claude, " +
+      "Gemini or Grok subscription via CLIProxyAPI, or your own API key).",
   );
 }
 
@@ -90,8 +81,9 @@ export function createBrowserModel(
 export function filterToolsByMode(
   tools: FunctionTool[],
   mode: AutomationMode,
+  supportsVision = true,
 ): FunctionTool[] {
-  if (mode === "background") {
+  if (mode === "background" || !supportsVision) {
     return tools.filter((tool) => {
       const toolName = tool.name.toLowerCase();
       return (
@@ -106,8 +98,11 @@ export function filterToolsByMode(
 }
 
 /** The full browser tool set filtered for the given automation mode. */
-export function resolveBrowserTools(mode: AutomationMode): FunctionTool[] {
-  return filterToolsByMode(allBrowserTools, mode);
+export function resolveBrowserTools(
+  mode: AutomationMode,
+  supportsVision = true,
+): FunctionTool[] {
+  return filterToolsByMode(allBrowserTools, mode, supportsVision);
 }
 
 /** Settings snapshot from chrome.storage, merged over defaults. */
@@ -115,7 +110,7 @@ export async function loadAppSettings(): Promise<AppSettings> {
   const stored = (await chromeStorageAdapter.load(
     STORAGE_KEYS.SETTINGS,
   )) as AppSettings | null;
-  return { ...DEFAULT_APP_SETTINGS, ...(stored ?? {}) };
+  return mergeAppSettings(stored ?? {});
 }
 
 /** Automation mode from chrome.storage (defaults to "focus"). */
@@ -124,14 +119,38 @@ export async function loadAutomationMode(): Promise<AutomationMode> {
   return validateAutomationMode(raw);
 }
 
+/** User-authored persona text from storage; "" when unset. */
+async function loadPersonaText(key: string): Promise<string> {
+  const value = await chromeStorageAdapter.load(key);
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** IDENTITY — who the assistant is (name, address style). */
+export async function loadIdentity(): Promise<string> {
+  return loadPersonaText(STORAGE_KEYS.IDENTITY);
+}
+
+/** SOUL — how the assistant behaves (tone, values). */
+export async function loadSoul(): Promise<string> {
+  return loadPersonaText(STORAGE_KEYS.SOUL);
+}
+
 /**
- * Whether the user has switched on the parallel-research agent. Default OFF —
- * subagent fan-out only happens when explicitly enabled in the composer.
+ * Prompt section for the user-authored persona. Settings-level (changes
+ * rarely), so it is assembled into the system prompt at agent build time —
+ * unlike page-dependent context, which rides the turn.
  */
-export async function loadParallelAgentEnabled(): Promise<boolean> {
-  return (
-    (await chromeStorageAdapter.load(STORAGE_KEYS.PARALLEL_AGENT)) === true
-  );
+export function renderPersonaForPrompt(identity: string, soul: string): string {
+  const sections: string[] = [];
+  if (identity) {
+    sections.push(
+      `=== IDENTITY (who you are — user-authored) ===\n${identity}`,
+    );
+  }
+  if (soul) {
+    sections.push(`=== SOUL (how you behave — user-authored) ===\n${soul}`);
+  }
+  return sections.join("\n\n");
 }
 
 /**
@@ -145,9 +164,12 @@ export async function loadAutoScreenshotEnabled(): Promise<boolean> {
   );
 }
 
-/** Browser-specific agent configuration shared by UI and background host. */
+/**
+ * Browser-specific agent configuration shared by UI and background host.
+ * Instructions are NOT static config: chat-host-init assembles them per
+ * session via buildSystemPrompt so the prompt matches the resolved bundle.
+ */
 export const BROWSER_AGENT_CONFIG = {
-  instructions: SYSTEM_PROMPT,
   name: "Eterna Browser Assistant",
   maxTurns: 2000,
   /**

@@ -47,7 +47,7 @@ class ZenFSManager {
         mounts: {
           "/skills": {
             backend: IndexedDB,
-            storeName: "aipex-skills-fs",
+            storeName: "eterna-skills-fs",
           },
         },
       });

@@ -1,7 +1,7 @@
 /**
- * WebSocket command executor for the AIPex extension.
+ * WebSocket command executor for the Eterna extension.
  *
- * Connects as a WebSocket client to the aipex-mcp-bridge and listens
+ * Connects as a WebSocket client to the eterna-mcp-bridge and listens
  * for tool execution commands. The bridge is the true MCP server — this
  * class simply executes tools and returns results.
  *
@@ -13,7 +13,7 @@
  * side — the bridge handles that entirely with static tool schemas.
  */
 
-import type { FunctionTool } from "@aipexstudio/aipex-core";
+import type { FunctionTool } from "@eterna/core";
 import { allBrowserTools } from "../tools/index.js";
 import {
   type JSONRPCMessage,
@@ -303,11 +303,12 @@ export class WsMcpServer {
       );
     }
 
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
       const toolExecution = this.executeTool(name, args);
 
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(
+        timeoutHandle = setTimeout(
           () =>
             reject(
               new Error(
@@ -333,6 +334,10 @@ export class WsMcpServer {
         ],
         isError: true,
       });
+    } finally {
+      // Without this every tool call leaves a live 60s timer holding its
+      // closure — enough to keep the MV3 service worker from idling out.
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     }
   }
 

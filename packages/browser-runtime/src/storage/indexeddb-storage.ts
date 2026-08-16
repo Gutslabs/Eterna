@@ -1,4 +1,4 @@
-import type { KeyValueStorage, WatchCallback } from "@aipexstudio/aipex-core";
+import type { KeyValueStorage, WatchCallback } from "@eterna/core";
 
 export interface IndexedDBConfig {
   dbName: string;

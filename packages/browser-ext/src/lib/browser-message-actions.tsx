@@ -5,12 +5,9 @@
  * assistant message.
  */
 
-import {
-  Action,
-  Actions,
-} from "@aipexstudio/aipex-react/components/ai-elements/actions";
-import { useChatContext } from "@aipexstudio/aipex-react/components/chatbot";
-import type { MessageActionsSlotProps } from "@aipexstudio/aipex-react/types";
+import { Action, Actions } from "@eterna/react/components/ai-elements/actions";
+import { useChatContext } from "@eterna/react/components/chatbot";
+import type { MessageActionsSlotProps } from "@eterna/react/types";
 import { CopyIcon, PuzzleIcon, RefreshCcwIcon } from "lucide-react";
 import { useCallback } from "react";
 

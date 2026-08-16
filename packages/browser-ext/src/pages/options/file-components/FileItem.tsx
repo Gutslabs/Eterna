@@ -1,5 +1,5 @@
-import { Badge } from "@aipexstudio/aipex-react/components/ui/badge";
-import type { FileTreeNode } from "@aipexstudio/browser-runtime";
+import type { FileTreeNode } from "@eterna/browser-runtime";
+import { Badge } from "@eterna/react/components/ui/badge";
 import { ChevronDown, ChevronRight, Folder, FolderOpen } from "lucide-react";
 import type React from "react";
 import { FileActions } from "./FileActions";

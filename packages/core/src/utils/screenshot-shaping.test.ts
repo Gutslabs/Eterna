@@ -5,7 +5,9 @@ import {
   isTransientScreenshotItem,
   pruneTransientScreenshotItems,
   shapeScreenshotItems,
+  stripImageInputs,
   TRANSIENT_SCREENSHOT_MARKER,
+  VISION_FALLBACK_TEXT,
 } from "./screenshot-shaping.js";
 
 // --- Helpers ---
@@ -13,6 +15,36 @@ import {
 const TEST_IMAGE_DATA = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==";
 const TEST_SCREENSHOT_UID = "screenshot_1234567890_abcdefghi";
 const PLACEHOLDER = "[Image data removed - see following user message]";
+
+describe("text-only vision fallback", () => {
+  it("replaces image parts while preserving the user's prompt", () => {
+    const items = stripImageInputs([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "Describe this" },
+          { type: "input_image", image: TEST_IMAGE_DATA, detail: "auto" },
+        ],
+      } as AgentInputItem,
+    ]);
+
+    expect(items[0]).toMatchObject({
+      content: [
+        { type: "input_text", text: "Describe this" },
+        { type: "input_text", text: VISION_FALLBACK_TEXT },
+      ],
+    });
+  });
+
+  it("does not leave misleading screenshot text on transient messages", () => {
+    const shaped = shapeScreenshotItems([createScreenshotToolResult()]);
+    const items = stripImageInputs(shaped);
+    expect(items[1]).toMatchObject({
+      content: [{ type: "input_text", text: VISION_FALLBACK_TEXT }],
+    });
+  });
+});
 
 /**
  * Create a screenshot tool result with plain string output (legacy/test format).
@@ -286,7 +318,7 @@ describe("shapeScreenshotItems", () => {
   });
 
   it("should handle data.data nesting (two levels)", () => {
-    // This matches the old aipex pattern: { data: { data: { imageData, ... } } }
+    // This matches the old eterna pattern: { data: { data: { imageData, ... } } }
     const output = {
       success: true,
       data: {

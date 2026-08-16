@@ -1,4 +1,7 @@
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
+import { Defuddle } from "defuddle/node";
+import { DOMParser, parseHTML } from "linkedom";
+import { extractText } from "unpdf";
 import { z } from "zod";
 
 /**
@@ -7,18 +10,17 @@ import { z } from "zod";
  * Runs in the background service worker: it fetches the URL (the extension has
  * host permissions, so cross-origin works) and extracts the article with
  * `defuddle/node`, which parses the HTML string via linkedom — no DOM, so it
- * works in the SW. Defuddle is lazy-imported to keep it off the SW eager
- * bundle. This is the agent's "off-page reach": reading a link that is NOT the
- * page already open (that one rides along as attached context).
+ * works in the SW. All extraction deps are STATIC imports: MV3 forbids dynamic
+ * import() in service workers, so lazy chunks fail at runtime ("import() is
+ * disallowed"). This is the agent's "off-page reach": reading a link that is
+ * NOT the page already open (that one rides along as attached context).
  */
 
 /** Clean Markdown is dense, so an explicit read gets a slightly larger cap. */
 const READ_URL_LIMIT = 16000;
 const FETCH_TIMEOUT_MS = 15_000;
-const MAX_REDIRECTS = 5;
 const MAX_HTML_BYTES = 5 * 1024 * 1024;
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
-const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 export interface ReadUrlResult {
   success: boolean;
@@ -95,38 +97,40 @@ export interface PublicFetchResult {
   finalUrl: string;
 }
 
-/** Fetch a public URL while re-validating every redirect target. */
+/**
+ * Fetch a public URL, following redirects, and refuse to hand back a body
+ * that ended up on a non-public address.
+ *
+ * Redirects must be followed by the browser: per the fetch spec,
+ * `redirect: "manual"` yields an opaque-redirect response — status 0, no
+ * Location header — so hop-by-hop re-validation is impossible in a service
+ * worker (it only ever worked in node tests, where undici returns the real
+ * 3xx). Every redirecting site used to surface as "HTTP 0" in the extension.
+ * The final destination is validated via response.url instead; a chain that
+ * lands on a private address is rejected without exposing the body.
+ */
 export async function fetchPublicUrl(
   raw: string,
   signal: AbortSignal = AbortSignal.timeout(FETCH_TIMEOUT_MS),
 ): Promise<PublicFetchResult> {
-  let currentUrl = raw;
-
-  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
-    if (!isPublicHttpUrl(currentUrl)) {
-      throw new Error("Redirected to a non-public address.");
-    }
-
-    const response = await fetch(currentUrl, {
-      redirect: "manual",
-      credentials: "omit",
-      referrerPolicy: "no-referrer",
-      signal,
-    });
-    if (!REDIRECT_STATUSES.has(response.status)) {
-      return { response, finalUrl: currentUrl };
-    }
-
-    const location = response.headers.get("location");
-    await response.body?.cancel().catch(() => {});
-    if (!location) return { response, finalUrl: currentUrl };
-    if (redirects === MAX_REDIRECTS) {
-      throw new Error(`Too many redirects (max ${MAX_REDIRECTS}).`);
-    }
-    currentUrl = new URL(location, currentUrl).toString();
+  if (!isPublicHttpUrl(raw)) {
+    throw new Error("Redirected to a non-public address.");
   }
 
-  throw new Error(`Too many redirects (max ${MAX_REDIRECTS}).`);
+  const response = await fetch(raw, {
+    redirect: "follow",
+    credentials: "omit",
+    referrerPolicy: "no-referrer",
+    signal,
+  });
+
+  const finalUrl = response.url || raw;
+  if (!isPublicHttpUrl(finalUrl)) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error("Redirected to a non-public address.");
+  }
+
+  return { response, finalUrl };
 }
 
 /** Read a response without allowing an untrusted server to exhaust SW memory. */
@@ -170,6 +174,83 @@ export async function readResponseBytes(
   return bytes;
 }
 
+const X_STATUS_RE =
+  /^https?:\/\/(?:www\.|mobile\.)?(?:x\.com|twitter\.com)\/([A-Za-z0-9_]+)\/status(?:es)?\/(\d+)/;
+
+interface FxTweet {
+  text?: string;
+  created_at?: string;
+  likes?: number;
+  retweets?: number;
+  replies?: number;
+  author?: { name?: string; screen_name?: string };
+  media?: { all?: Array<{ url?: string; type?: string }> };
+  quote?: FxTweet;
+}
+
+function formatFxTweet(tweet: FxTweet, depth = 0): string {
+  const name = tweet.author?.name ?? "Unknown";
+  const handle = tweet.author?.screen_name
+    ? ` (@${tweet.author.screen_name})`
+    : "";
+  const lines = [
+    `**${name}**${handle}${tweet.created_at ? ` — ${tweet.created_at}` : ""}`,
+  ];
+  if (tweet.text) lines.push("", tweet.text);
+  const stats = [
+    typeof tweet.replies === "number" ? `${tweet.replies} replies` : null,
+    typeof tweet.retweets === "number" ? `${tweet.retweets} retweets` : null,
+    typeof tweet.likes === "number" ? `${tweet.likes} likes` : null,
+  ].filter(Boolean);
+  if (stats.length && depth === 0) lines.push("", stats.join(" · "));
+  const media = (tweet.media?.all ?? [])
+    .map((item) => item.url)
+    .filter((item): item is string => typeof item === "string");
+  if (media.length) lines.push("", `Media: ${media.join(" ")}`);
+  if (tweet.quote && depth === 0) {
+    const quoted = formatFxTweet(tweet.quote, 1)
+      .split("\n")
+      .map((line) => (line ? `> ${line}` : ">"))
+      .join("\n");
+    lines.push("", "Quoting:", quoted);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * X serves logged-out fetches a script shell with no tweet content, so status
+ * links read through FxTwitter's public JSON mirror instead. Anything
+ * unexpected (non-status URL, API failure) falls back to the generic fetch.
+ */
+export async function readXStatus(url: string): Promise<ReadUrlResult | null> {
+  const match = url.match(X_STATUS_RE);
+  if (!match) return null;
+  try {
+    const response = await fetch(
+      `https://api.fxtwitter.com/${match[1]}/status/${match[2]}`,
+      { credentials: "omit", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as { code?: number; tweet?: FxTweet };
+    const tweet = data.tweet;
+    if (!tweet?.text && !tweet?.author) return null;
+
+    const name = tweet.author?.name ?? "Unknown";
+    const handle = tweet.author?.screen_name;
+    return {
+      success: true,
+      url,
+      title: `${name}${handle ? ` (@${handle})` : ""} on X`,
+      site: "X (Twitter)",
+      author: name,
+      published: tweet.created_at,
+      content: formatFxTweet(tweet),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export interface ExtractedMarkdown {
   title?: string;
   site?: string;
@@ -187,12 +268,42 @@ export interface ExtractedMarkdown {
  * Lazy-imported to keep the ~1MB bundle off the SW eager path. Returns null
  * when nothing readable was found.
  */
+/**
+ * Defuddle's dependency tree carries a DOMParser shim that probes `window` /
+ * `document` bare — in the MV3 service worker neither exists, so certain
+ * pages crash extraction with "window is not defined". Aliasing window to
+ * globalThis and lending it linkedom's DOMParser satisfies the shim's happy
+ * path (a working parseFromString) before it ever reaches its ActiveXObject /
+ * document.implementation fallbacks. linkedom is already in the bundle as
+ * defuddle's own parser, so this adds no weight.
+ */
+async function ensureDomGlobalsForExtraction(): Promise<void> {
+  const scope = globalThis as {
+    window?: unknown;
+    document?: unknown;
+    DOMParser?: unknown;
+  };
+  // Alias window BEFORE loading anything, so even a module-scope probe in a
+  // lazily imported chunk resolves.
+  scope.window ??= globalThis;
+  if (
+    typeof scope.DOMParser !== "undefined" &&
+    typeof scope.document !== "undefined"
+  ) {
+    return;
+  }
+  scope.DOMParser ??= DOMParser;
+  // KaTeX (bundled inside defuddle for math markup) builds nodes straight off
+  // the document global; lend it a detached linkedom document.
+  scope.document ??= parseHTML("<html><body></body></html>").document;
+}
+
 export async function extractHtmlToMarkdown(
   html: string,
   url: string,
   limit: number,
 ): Promise<ExtractedMarkdown | null> {
-  const { Defuddle } = await import("defuddle/node");
+  await ensureDomGlobalsForExtraction();
   const result = await Defuddle(html, url, {
     markdown: true,
     includeReplies: "extractors",
@@ -215,14 +326,13 @@ export async function extractHtmlToMarkdown(
 
 /**
  * Extract text from a PDF via unpdf (a serverless pdf.js — no DOM, runs in the
- * SW). Lazy-imported so the ~1MB bundle stays off the eager path. Returns null
- * for empty/scanned PDFs where no text layer is present.
+ * SW). Statically imported: MV3 forbids dynamic import() in service workers.
+ * Returns null for empty/scanned PDFs where no text layer is present.
  */
 async function extractPdf(
   bytes: Uint8Array,
   limit: number,
 ): Promise<ExtractedMarkdown | null> {
-  const { extractText } = await import("unpdf");
   const { text } = await extractText(bytes, {
     mergePages: true,
   });
@@ -253,6 +363,9 @@ export const readUrlTool = tool({
           "Provide a public http(s) URL. Loopback, private and metadata addresses are blocked.",
       };
     }
+
+    const xStatus = await readXStatus(url);
+    if (xStatus) return xStatus;
 
     let response: Response;
     let finalUrl = url;

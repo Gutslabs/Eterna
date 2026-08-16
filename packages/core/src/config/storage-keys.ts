@@ -1,4 +1,4 @@
-const PREFIX = "aipex_";
+const PREFIX = "eterna_";
 
 export const STORAGE_KEYS = {
   THEME: `${PREFIX}theme`,
@@ -6,12 +6,20 @@ export const STORAGE_KEYS = {
   SETTINGS: `${PREFIX}settings`,
   HOST_ACCESS_CONFIG: `${PREFIX}host_access_config`,
   AUTOMATION_MODE: `${PREFIX}automation_mode`,
-  /** User toggle: fan research out to parallel background subagents. */
-  PARALLEL_AGENT: `${PREFIX}parallel_agent`,
   /** User toggle (default ON): auto-attach a viewport screenshot every message. */
   AUTO_ATTACH_SCREENSHOT: `${PREFIX}auto_attach_screenshot`,
   /** Long-term user memory: durable facts saved via the remember tool. */
   MEMORY: `${PREFIX}memory`,
+  /** Agent persona: who the assistant is (name, address style). User-authored. */
+  IDENTITY: `${PREFIX}identity`,
+  /** Agent persona: how the assistant behaves (tone, values). User-authored. */
+  SOUL: `${PREFIX}soul`,
+  /** Supermemory local config: { url, apiKey } for the localhost server. */
+  SUPERMEMORY: `${PREFIX}supermemory`,
+  /** One-shot flag: local memories were imported into Supermemory. */
+  SUPERMEMORY_IMPORTED: `${PREFIX}supermemory_imported`,
+  /** User-defined prompts executed by chrome.alarms. */
+  SCHEDULED_AUTOMATIONS: `${PREFIX}scheduled_automations`,
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

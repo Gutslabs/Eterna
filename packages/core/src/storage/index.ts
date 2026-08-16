@@ -3,6 +3,7 @@ export type WatchCallback<T> = (change: { newValue?: T; oldValue?: T }) => void;
 export interface KeyValueStorage<T> {
   save(key: string, data: T): Promise<void>;
   load(key: string): Promise<T | null>;
+  update?(key: string, updater: (current: T | null) => T): Promise<T>;
   delete(key: string): Promise<void>;
   listAll(): Promise<T[]>;
   query(predicate: (item: T) => boolean): Promise<T[]>;
@@ -16,6 +17,12 @@ export abstract class BaseKeyValueStorage<T> implements KeyValueStorage<T> {
   abstract delete(key: string): Promise<void>;
   abstract listAll(): Promise<T[]>;
   abstract watch(key: string, callback: WatchCallback<T>): () => void;
+
+  async update(key: string, updater: (current: T | null) => T): Promise<T> {
+    const next = updater(await this.load(key));
+    await this.save(key, next);
+    return next;
+  }
 
   async query(predicate: (item: T) => boolean): Promise<T[]> {
     const allItems = await this.listAll();

@@ -14,27 +14,37 @@ afterEach(() => {
 });
 
 describe("local backend status", () => {
-  it("maps local models to their shared health endpoint", () => {
-    expect(localBackendForModel("catgpt-browser::GPT-5.6 Sol|High")).toEqual({
-      key: "gpt-web",
-      label: "gpt-web",
-      healthUrl: "http://localhost:8000/healthz",
-    });
-    expect(localBackendForModel("claude-browser::Opus 5|High")).toEqual({
-      key: "claude-web",
-      label: "claude-web",
-      healthUrl: "http://localhost:8001/healthz",
-    });
-    expect(localBackendForModel("gemini-3-flash")?.key).toBe("cliproxy");
-    expect(localBackendForModel("gpt-5.5")).toBeNull();
+  it("maps every proxy-served model to the shared health endpoint", () => {
+    for (const model of [
+      "gpt-5.6-sol",
+      "claude-opus-5::xhigh",
+      "gemini-3.7-flash-high",
+      "grok-4.6",
+    ]) {
+      expect(localBackendForModel(model)).toEqual({
+        key: "cliproxy",
+        label: "CLIProxy",
+        healthUrl: "http://localhost:8317/v1/models",
+      });
+    }
+  });
+
+  it("leaves models the proxy does not serve unprobed", () => {
+    expect(localBackendForModel("claude-browser::Opus 5|High")).toBeNull();
+    expect(localBackendForModel("gpt-4o")).toBeNull();
+    expect(localBackendForModel(undefined)).toBeNull();
   });
 
   it("caches successful probes instead of delaying every send", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(probeLocalBackend("gemini-3-flash")).resolves.toBe(true);
-    await expect(probeLocalBackend("gemini-3-flash")).resolves.toBe(true);
+    await expect(probeLocalBackend("gemini-3.7-flash-high")).resolves.toBe(
+      true,
+    );
+    await expect(probeLocalBackend("gemini-3.7-flash-high")).resolves.toBe(
+      true,
+    );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -43,9 +53,11 @@ describe("local backend status", () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("offline"));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(probeLocalBackend("gemini-3-flash")).resolves.toBe(false);
+    await expect(probeLocalBackend("gemini-3.7-flash-high")).resolves.toBe(
+      false,
+    );
     await expect(
-      probeLocalBackend("gemini-3-flash", { force: true }),
+      probeLocalBackend("gemini-3.7-flash-high", { force: true }),
     ).resolves.toBe(false);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);

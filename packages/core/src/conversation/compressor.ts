@@ -135,7 +135,14 @@ Write terse notes, not prose; do not address the user. Keep it under ${this.conf
       const obj = output as Record<string, unknown>;
       if (typeof obj.text === "string") return obj.text;
       try {
-        return JSON.stringify(obj);
+        // The caller keeps ~400 chars, so cap nested strings while
+        // serializing — otherwise a raw screenshot/page payload builds
+        // multi-MB JSON here just to be thrown away.
+        return JSON.stringify(obj, (_key, value) =>
+          typeof value === "string" && value.length > 500
+            ? `${value.slice(0, 500)}…`
+            : value,
+        );
       } catch {
         return String(output);
       }

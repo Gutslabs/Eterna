@@ -11,7 +11,7 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/browser-runtime" },
-    { "path": "./packages/aipex-react" },
+    { "path": "./packages/eterna-react" },
     { "path": "./packages/browser-ext" }
   ]
 }

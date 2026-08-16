@@ -1,14 +1,14 @@
 /**
- * Port-backed stand-in for the AIPex agent.
+ * Port-backed stand-in for the Eterna agent.
  *
  * The real run loop executes in the background service worker (chat-host);
- * this client exposes the slice of the AIPex surface that useChat consumes —
+ * this client exposes the slice of the Eterna surface that useChat consumes —
  * chat() as an async generator, rollbackLastAssistantTurn, and
  * getConversationManager().deleteSession — plus attach/replay so the sidebar
  * can re-join a turn that kept running while the page reloaded.
  */
 
-import type { AgentEvent, ChatOptions } from "@aipexstudio/aipex-core";
+import type { AgentEvent, ChatOptions } from "@eterna/core";
 import {
   CHAT_PORT_NAME,
   type ChatHostInbound,
@@ -34,11 +34,6 @@ const defaultConnector: Connector = () =>
   chrome.runtime.connect({ name: CHAT_PORT_NAME }) as unknown as ClientPortLike;
 
 const CLIENT_ID_KEY = "eterna-chat-client-id";
-const GATEWAY_ROUTE_ID_KEY = "eterna-gateway-route-id";
-const GATEWAY_CONVERSATION_ROUTES_KEY = "eterna-gateway-conversation-routes";
-const MAX_SAVED_GATEWAY_ROUTES = 100;
-const inMemoryConversationRoutes = new Map<string, string>();
-
 function createClientId(): string {
   try {
     const existing = globalThis.sessionStorage?.getItem(CLIENT_ID_KEY);
@@ -48,73 +43,6 @@ function createClientId(): string {
     return id;
   } catch {
     return crypto.randomUUID();
-  }
-}
-
-function newGatewayRouteId(): string {
-  return `route-${crypto.randomUUID()}`;
-}
-
-function createGatewayRouteId(): string {
-  try {
-    const existing = globalThis.sessionStorage?.getItem(GATEWAY_ROUTE_ID_KEY);
-    if (existing) return existing;
-    const routeId = newGatewayRouteId();
-    globalThis.sessionStorage?.setItem(GATEWAY_ROUTE_ID_KEY, routeId);
-    return routeId;
-  } catch {
-    return newGatewayRouteId();
-  }
-}
-
-function saveCurrentGatewayRouteId(routeId: string): void {
-  try {
-    globalThis.sessionStorage?.setItem(GATEWAY_ROUTE_ID_KEY, routeId);
-  } catch {
-    // The in-memory route still keeps this page correct.
-  }
-}
-
-function readConversationRoutes(): Record<string, string> {
-  const fallback = Object.fromEntries(inMemoryConversationRoutes);
-  try {
-    const raw = globalThis.localStorage?.getItem(
-      GATEWAY_CONVERSATION_ROUTES_KEY,
-    );
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return {
-      ...Object.fromEntries(
-        Object.entries(parsed).filter(
-          (entry): entry is [string, string] => typeof entry[1] === "string",
-        ),
-      ),
-      ...fallback,
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-function saveConversationRoute(conversationId: string, routeId: string): void {
-  inMemoryConversationRoutes.delete(conversationId);
-  inMemoryConversationRoutes.set(conversationId, routeId);
-  while (inMemoryConversationRoutes.size > MAX_SAVED_GATEWAY_ROUTES) {
-    const oldestConversationId = inMemoryConversationRoutes.keys().next().value;
-    if (oldestConversationId === undefined) break;
-    inMemoryConversationRoutes.delete(oldestConversationId);
-  }
-  try {
-    const routes = readConversationRoutes();
-    delete routes[conversationId];
-    routes[conversationId] = routeId;
-    const entries = Object.entries(routes).slice(-MAX_SAVED_GATEWAY_ROUTES);
-    globalThis.localStorage?.setItem(
-      GATEWAY_CONVERSATION_ROUTES_KEY,
-      JSON.stringify(Object.fromEntries(entries)),
-    );
-  } catch {
-    // Conversation routing remains available for the current page.
   }
 }
 
@@ -197,17 +125,13 @@ export class RemoteBrowserAgent {
   private lastRunId: string | null = null;
   private readonly streamControls = new Map<string, Set<StreamControl>>();
   private readonly clientId: string;
-  private gatewayRouteId: string;
-  private readonly runRouteIds = new Map<string, string>();
 
   constructor(
     connector: Connector = defaultConnector,
     clientId = createClientId(),
-    gatewayRouteId = createGatewayRouteId(),
   ) {
     this.connector = connector;
     this.clientId = clientId;
-    this.gatewayRouteId = gatewayRouteId;
   }
 
   private newId(prefix: string): string {
@@ -319,20 +243,12 @@ export class RemoteBrowserAgent {
   }
 
   /**
-   * Stream a turn through the background host. Mirrors AIPex.chat:
+   * Stream a turn through the background host. Mirrors Eterna.chat:
    * generator.return() interrupts the run host-side.
    */
   chat(text: string, options?: ChatOptions): RunEventStream {
     const runId = this.newId("run");
-    const routeId = this.gatewayRouteId;
     this.lastRunId = runId;
-    this.runRouteIds.set(runId, routeId);
-    if (this.runRouteIds.size > MAX_SAVED_GATEWAY_ROUTES) {
-      const oldestRunId = this.runRouteIds.keys().next().value;
-      if (oldestRunId !== undefined) {
-        this.runRouteIds.delete(oldestRunId);
-      }
-    }
     const streamControl = this.registerStream(runId);
     const queue = new AsyncEventQueue<StreamItem>();
     let finished = false;
@@ -385,7 +301,6 @@ export class RemoteBrowserAgent {
       text,
       options: {
         sessionId: options?.sessionId,
-        routeId,
         contexts: options?.contexts as unknown[] | undefined,
         images: options?.images,
       },
@@ -453,28 +368,6 @@ export class RemoteBrowserAgent {
     };
   }
 
-  /** Reset the gateway web-thread state host-side (New Chat / restore). */
-  async freshGatewayThread(
-    model: string | undefined,
-    options: { resetRemote?: boolean } = {},
-  ): Promise<void> {
-    this.gatewayRouteId = newGatewayRouteId();
-    saveCurrentGatewayRouteId(this.gatewayRouteId);
-    await this.rpc("fresh_gateway_thread", {
-      model,
-      resetRemote: options.resetRemote,
-    });
-  }
-
-  activateGatewayConversation(conversationId: string): void {
-    const savedRouteId = readConversationRoutes()[conversationId];
-    this.gatewayRouteId = savedRouteId ?? `conversation-${conversationId}`;
-    saveCurrentGatewayRouteId(this.gatewayRouteId);
-    if (!savedRouteId) {
-      saveConversationRoute(conversationId, this.gatewayRouteId);
-    }
-  }
-
   /**
    * Associate the most recent run started by this client (or the run
    * attached to) with a saved conversation id — best-effort.
@@ -486,11 +379,6 @@ export class RemoteBrowserAgent {
     userMessageId?: string,
   ): void {
     if (!runId) return;
-    const routeId = this.runRouteIds.get(runId);
-    if (routeId) {
-      saveConversationRoute(conversationId, routeId);
-      this.runRouteIds.delete(runId);
-    }
     try {
       this.ensurePort().postMessage({
         type: "bind_conversation",

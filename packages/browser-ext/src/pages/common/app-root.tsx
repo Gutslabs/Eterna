@@ -3,17 +3,17 @@
  * Simple wrapper using browser-specific hooks
  */
 
-import type { AIPex, AppSettings } from "@aipexstudio/aipex-core";
-import ChatBot from "@aipexstudio/aipex-react/components/chatbot";
-import { ErrorBoundary } from "@aipexstudio/aipex-react/components/error/ErrorBoundary";
-import type { InterventionMode } from "@aipexstudio/aipex-react/components/intervention";
-import { useChatConfig } from "@aipexstudio/aipex-react/hooks";
-import { I18nProvider } from "@aipexstudio/aipex-react/i18n/context";
-import type { Language } from "@aipexstudio/aipex-react/i18n/types";
-import { ThemeProvider } from "@aipexstudio/aipex-react/theme/context";
-import type { Theme } from "@aipexstudio/aipex-react/theme/types";
-import type { AuthCheckResult } from "@aipexstudio/aipex-react/types";
-import { ChromeStorageAdapter } from "@aipexstudio/browser-runtime";
+import { ChromeStorageAdapter } from "@eterna/browser-runtime";
+import type { AppSettings, Eterna } from "@eterna/core";
+import ChatBot from "@eterna/react/components/chatbot";
+import { ErrorBoundary } from "@eterna/react/components/error/ErrorBoundary";
+import type { InterventionMode } from "@eterna/react/components/intervention";
+import { useChatConfig } from "@eterna/react/hooks";
+import { I18nProvider } from "@eterna/react/i18n/context";
+import type { Language } from "@eterna/react/i18n/types";
+import { ThemeProvider } from "@eterna/react/theme/context";
+import type { Theme } from "@eterna/react/theme/types";
+import type { AuthCheckResult } from "@eterna/react/types";
 import React, {
   useCallback,
   useEffect,
@@ -25,9 +25,10 @@ import ReactDOM from "react-dom/client";
 import { chromeStorageAdapter } from "../../hooks";
 import {
   isByokConfigured,
-  isCatGptGatewayModel,
   isChatGptModel,
   isClaudeGatewayModel,
+  isCliProxyModel,
+  isCodexGatewayModel,
   isGeminiGatewayModel,
   isXaiGatewayModel,
 } from "../../lib/ai-provider";
@@ -49,7 +50,6 @@ import {
   bindOpenEternaShortcut,
   closeEternaPanel,
 } from "../../lib/open-eterna-shortcut";
-import { ParallelAgentToggle } from "../../lib/parallel-agent-toggle";
 import { PromptLibrary } from "../../lib/prompt-library";
 import { getRemoteBrowserAgent } from "../../lib/remote-agent";
 import { SelectionAutoSend } from "../../lib/selection-autosend";
@@ -66,15 +66,9 @@ const themeStorageAdapter = new ChromeStorageAdapter<Theme>();
 async function checkAuth(
   settings: ReturnType<typeof useChatConfig>["settings"],
 ): Promise<AuthCheckResult> {
-  // ChatGPT subscription (OAuth) and the local CatGPT-Gateway handle their own
-  // auth, so AIPex doesn't need a login before sending.
-  if (
-    isChatGptModel(settings.aiModel) ||
-    isCatGptGatewayModel(settings.aiModel) ||
-    isGeminiGatewayModel(settings.aiModel) ||
-    isXaiGatewayModel(settings.aiModel) ||
-    isClaudeGatewayModel(settings.aiModel)
-  ) {
+  // CLIProxyAPI and the ChatGPT subscription (OAuth) handle their own auth,
+  // so Eterna doesn't need a login before sending.
+  if (isCliProxyModel(settings.aiModel) || isChatGptModel(settings.aiModel)) {
     const offline = await offlineBackendGuide(settings.aiModel);
     if (offline) {
       return { needsAuth: false, hasCustomConfig: true, blockMessage: offline };
@@ -91,67 +85,28 @@ async function checkAuth(
     needsAuth: false,
     hasCustomConfig: false,
     blockMessage:
-      "No AI provider configured. Open Settings and sign in with ChatGPT, " +
-      "start a local gateway, or add your own API key.",
+      "No AI provider configured. Open Settings and pick a Codex, Claude, " +
+      "Gemini or Grok model, or add your own API key.",
   };
 }
 
-function gatewayOfflineGuide(label: string, container: string): string {
+function cliProxyOfflineGuide(label: string, loginFlag: string): string {
   return [
-    `### ⚠️ ${label} kapalı`,
+    `### ⚠️ ${label} proxy kapalı`,
     "",
-    `**${label}** için yerel gateway (Docker) çalışmıyor.`,
-    "",
-    "1. **Docker Desktop**'ı aç.",
-    "2. Terminalde container'ı başlat:",
+    `${label} için **CLIProxyAPI** (\`localhost:8317\`) çalışmıyor. Terminalde başlat:`,
     "",
     "```bash",
-    `docker start ${container}`,
+    "brew services start cliproxyapi",
     "```",
     "",
-    "Hazır olunca (~1 dk) tekrar dene.",
+    `Birkaç saniye sonra tekrar dene. İlk kez giriş gerekiyorsa \`cliproxyapi ${loginFlag}\`.`,
   ].join("\n");
 }
 
-const GEMINI_OFFLINE_GUIDE = [
-  "### ⚠️ Gemini proxy kapalı",
-  "",
-  "Gemini için **CLIProxyAPI** (`localhost:8317`) çalışmıyor. Terminalde başlat:",
-  "",
-  "```bash",
-  "brew services start cliproxyapi",
-  "```",
-  "",
-  "Birkaç saniye sonra tekrar dene. İlk kez giriş gerekiyorsa `cliproxyapi -antigravity-login`.",
-].join("\n");
-
-const GROK_OFFLINE_GUIDE = [
-  "### ⚠️ Grok proxy kapalı",
-  "",
-  "Grok için **CLIProxyAPI** (`localhost:8317`) çalışmıyor. Terminalde başlat:",
-  "",
-  "```bash",
-  "brew services start cliproxyapi",
-  "```",
-  "",
-  "Birkaç saniye sonra tekrar dene. İlk kez giriş gerekiyorsa `cliproxyapi -xai-login`.",
-].join("\n");
-
-const CLAUDE_OFFLINE_GUIDE = [
-  "### ⚠️ Claude proxy kapalı",
-  "",
-  "Claude için **CLIProxyAPI** (`localhost:8317`) çalışmıyor. Terminalde başlat:",
-  "",
-  "```bash",
-  "brew services start cliproxyapi",
-  "```",
-  "",
-  "Birkaç saniye sonra tekrar dene. İlk kez giriş gerekiyorsa `cliproxyapi -claude-login`.",
-].join("\n");
-
 /**
- * If the model needs a local backend (Docker gateway or the Gemini proxy) and
- * it isn't reachable, return a markdown guide to start it; otherwise null.
+ * If the model needs the local CLIProxyAPI instance and it isn't reachable,
+ * return a markdown guide to start it; otherwise null.
  */
 async function offlineBackendGuide(
   model: string | undefined,
@@ -159,20 +114,17 @@ async function offlineBackendGuide(
   const reachable = await probeLocalBackend(model);
   if (reachable) return null;
 
-  if (model?.startsWith("catgpt-browser")) {
-    return gatewayOfflineGuide("gpt-web (ChatGPT)", "catgpt");
-  }
-  if (model?.startsWith("claude-browser")) {
-    return gatewayOfflineGuide("claude-web (Claude)", "catgpt-claude");
-  }
-  if (isGeminiGatewayModel(model)) {
-    return GEMINI_OFFLINE_GUIDE;
-  }
-  if (isXaiGatewayModel(model)) {
-    return GROK_OFFLINE_GUIDE;
+  if (isCodexGatewayModel(model)) {
+    return cliProxyOfflineGuide("Codex", "-codex-login");
   }
   if (isClaudeGatewayModel(model)) {
-    return CLAUDE_OFFLINE_GUIDE;
+    return cliProxyOfflineGuide("Claude", "-claude-login");
+  }
+  if (isGeminiGatewayModel(model)) {
+    return cliProxyOfflineGuide("Gemini", "-antigravity-login");
+  }
+  if (isXaiGatewayModel(model)) {
+    return cliProxyOfflineGuide("Grok", "-xai-login");
   }
   return null;
 }
@@ -197,7 +149,7 @@ function ChatApp() {
     autoLoad: true,
   });
 
-  // Port-backed stand-in for the AIPex agent — the run loop lives in the
+  // Port-backed stand-in for the Eterna agent — the run loop lives in the
   // background service worker so a turn survives host-page refresh.
   // A fresh wrapper identity per model keeps useChat's "agent changed →
   // reset session" semantics from the local-agent days.
@@ -210,7 +162,7 @@ function ChatApp() {
       chat: client.chat.bind(client),
       rollbackLastAssistantTurn: client.rollbackLastAssistantTurn.bind(client),
       getConversationManager: client.getConversationManager.bind(client),
-    } as unknown as AIPex;
+    } as unknown as Eterna;
   }, [isLoading, aiModel]);
   const error = useMemo(
     () => (isLoading ? undefined : validateAgentConfig(settings)),
@@ -324,7 +276,6 @@ function ChatApp() {
             composerTools: () => (
               <>
                 <LocalBackendIndicator />
-                <ParallelAgentToggle />
                 <AutoScreenshotToggle />
               </>
             ),

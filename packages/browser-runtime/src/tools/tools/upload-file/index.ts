@@ -1,4 +1,4 @@
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
 import { CdpCommander } from "../../../automation/cdp-commander";
 import { debuggerManager } from "../../../automation/debugger-manager";
@@ -7,7 +7,7 @@ import { debuggerManager } from "../../../automation/debugger-manager";
  * Resolve the target file input element on the page.
  *
  * Strategy:
- * 1. If uid provided: try UID-based lookup via [data-aipex-nodeid]
+ * 1. If uid provided: try UID-based lookup via [data-eterna-nodeid]
  * 2. Fallback: CSS querySelectorAll('input[type=file]')[inputIndex]
  *    This finds ALL file inputs including display:none hidden ones.
  */
@@ -24,7 +24,7 @@ async function resolveFileInputNodeId(
       "DOM.querySelector",
       {
         nodeId: rootNodeId,
-        selector: `[data-aipex-nodeid="${esc}"]`,
+        selector: `[data-eterna-nodeid="${esc}"]`,
       },
     );
     if (result.nodeId) {
@@ -62,11 +62,11 @@ WORKFLOW:
 1. Provide the tabId and a local file_path
 2. The tool automatically finds the file input (including hidden ones)
 3. If the page has multiple file inputs, use input_index to select which one (0 = first)
-4. Optionally provide uid from a snapshot if you know the exact element
+4. Optionally provide uid from search_elements if you know the exact element
 
 NOTE: Most websites hide the actual <input type="file"> behind a styled button. This tool handles both visible and hidden file inputs automatically.
 
-AFTER UPLOAD: take a screenshot to verify the file was accepted, then proceed to submit the form.`,
+AFTER UPLOAD: verify the file was accepted (re-run search_elements, or capture a screenshot), then proceed to submit the form.`,
   parameters: z.object({
     tabId: z
       .number()

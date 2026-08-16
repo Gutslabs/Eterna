@@ -3,13 +3,13 @@
  * Monitors tab changes and updates available contexts accordingly
  */
 
-import type { Context } from "@aipexstudio/aipex-core";
-import type { ContextItem } from "@aipexstudio/aipex-react/components/ai-elements/prompt-input";
 import {
   BookmarksProvider,
   CurrentPageProvider,
   TabsProvider,
-} from "@aipexstudio/browser-runtime";
+} from "@eterna/browser-runtime";
+import type { Context } from "@eterna/core";
+import type { ContextItem } from "@eterna/react/components/ai-elements/prompt-input";
 import { useCallback, useEffect, useRef } from "react";
 
 const currentPageProvider = new CurrentPageProvider();
@@ -102,100 +102,74 @@ interface UseTabsSyncOptions {
  * Hook to sync available contexts with browser tab events
  * - Refreshes available contexts when tabs are created, removed, or updated
  * - Automatically removes context tags for closed tabs
+ *
+ * Callers pass inline callbacks whose identity changes on every streaming
+ * commit, so everything reads the latest options through a ref: the four
+ * chrome.tabs listeners register exactly once per mount instead of being torn
+ * down and re-added per render — which also kept cancelling the debounce
+ * timer, so context rebuilds could never fire while a response streamed.
  */
-export function useTabsSync({
-  onContextsUpdate,
-  onContextRemove,
-  getSelectedContexts,
-  debounceDelay = 300,
-}: UseTabsSyncOptions) {
+export function useTabsSync(options: UseTabsSyncOptions) {
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializedRef = useRef(false);
 
-  /**
-   * Rebuild available contexts with debounce
-   */
-  const rebuildContexts = useCallback(
-    (immediate = false) => {
-      // Clear existing timer
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
+  const rebuildContexts = useCallback((immediate = false) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    const run = async (): Promise<void> => {
+      try {
+        const contexts = await getAllAvailableContexts();
+        optionsRef.current.onContextsUpdate(contexts);
+      } catch (error) {
+        console.error("[useTabsSync] Failed to rebuild contexts:", error);
       }
+    };
 
-      // Execute immediately if requested (for initial load)
-      if (immediate) {
-        getAllAvailableContexts()
-          .then((contexts) => {
-            onContextsUpdate(contexts);
-          })
-          .catch((error) => {
-            console.error("[useTabsSync] Failed to rebuild contexts:", error);
-          });
-        return;
-      }
+    // Execute immediately if requested (for initial load)
+    if (immediate) {
+      void run();
+      return;
+    }
 
-      // Set new timer for debounced updates
-      debounceTimerRef.current = setTimeout(async () => {
-        try {
-          const contexts = await getAllAvailableContexts();
-          onContextsUpdate(contexts);
-        } catch (error) {
-          console.error("[useTabsSync] Failed to rebuild contexts:", error);
-        }
-      }, debounceDelay);
-    },
-    [onContextsUpdate, debounceDelay],
-  );
+    debounceTimerRef.current = setTimeout(
+      run,
+      optionsRef.current.debounceDelay ?? 300,
+    );
+  }, []);
 
-  /**
-   * Remove context tags for a closed tab
-   */
-  const handleTabRemoved = useCallback(
-    (tabId: number) => {
-      const selectedContexts = getSelectedContexts();
-      const tabContextId = `tab-${tabId}`;
+  useEffect(() => {
+    // Load initial contexts immediately (no debounce)
+    if (!isInitializedRef.current) {
+      isInitializedRef.current = true;
+      rebuildContexts(true);
+    }
 
-      // Check if the removed tab is in selected contexts
-      const hasTabContext = selectedContexts.some(
-        (ctx) => ctx.id === tabContextId,
-      );
-
-      if (hasTabContext) {
-        onContextRemove(tabContextId);
-      }
-
-      // Also rebuild available contexts
-      rebuildContexts();
-    },
-    [getSelectedContexts, onContextRemove, rebuildContexts],
-  );
-
-  /**
-   * Handle tab activated event (current tab changed)
-   */
-  const handleTabActivated = useCallback(
-    (_activeInfo: { tabId: number; windowId: number }) => {
+    const handleTabActivated = (_activeInfo: {
+      tabId: number;
+      windowId: number;
+    }) => {
       // Rebuild contexts to update "Current Page" context
       rebuildContexts();
-    },
-    [rebuildContexts],
-  );
+    };
 
-  /**
-   * Handle tab created event
-   */
-  const handleTabCreated = useCallback(
-    (_tab: chrome.tabs.Tab) => {
+    const handleTabCreated = (_tab: chrome.tabs.Tab) => {
       rebuildContexts();
-    },
-    [rebuildContexts],
-  );
+    };
 
-  /**
-   * Handle tab updated event (title, URL, etc. changed)
-   */
-  const handleTabUpdated = useCallback(
-    (
+    const handleTabRemoved = (tabId: number) => {
+      const selectedContexts = optionsRef.current.getSelectedContexts();
+      const tabContextId = `tab-${tabId}`;
+      if (selectedContexts.some((ctx) => ctx.id === tabContextId)) {
+        optionsRef.current.onContextRemove(tabContextId);
+      }
+      rebuildContexts();
+    };
+
+    const handleTabUpdated = (
       _tabId: number,
       changeInfo: { title?: string; url?: string; status?: string },
       _tab: chrome.tabs.Tab,
@@ -208,44 +182,21 @@ export function useTabsSync({
       ) {
         rebuildContexts();
       }
-    },
-    [rebuildContexts],
-  );
+    };
 
-  /**
-   * Initialize and setup event listeners
-   */
-  useEffect(() => {
-    // Load initial contexts immediately (no debounce)
-    if (!isInitializedRef.current) {
-      isInitializedRef.current = true;
-      rebuildContexts(true); // Pass true to load immediately
-    }
-
-    // Setup Chrome tab event listeners
     chrome.tabs.onActivated.addListener(handleTabActivated);
     chrome.tabs.onCreated.addListener(handleTabCreated);
     chrome.tabs.onRemoved.addListener(handleTabRemoved);
     chrome.tabs.onUpdated.addListener(handleTabUpdated);
 
-    // Cleanup function
     return () => {
-      // Clear debounce timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-
-      // Remove event listeners
       chrome.tabs.onActivated.removeListener(handleTabActivated);
       chrome.tabs.onCreated.removeListener(handleTabCreated);
       chrome.tabs.onRemoved.removeListener(handleTabRemoved);
       chrome.tabs.onUpdated.removeListener(handleTabUpdated);
     };
-  }, [
-    handleTabActivated,
-    handleTabCreated,
-    handleTabRemoved,
-    handleTabUpdated,
-    rebuildContexts,
-  ]);
+  }, [rebuildContexts]);
 }

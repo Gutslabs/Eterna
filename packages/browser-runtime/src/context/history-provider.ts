@@ -3,11 +3,7 @@
  * Provides contexts from browser browsing history
  */
 
-import type {
-  Context,
-  ContextProvider,
-  ContextQuery,
-} from "@aipexstudio/aipex-core";
+import type { Context, ContextProvider, ContextQuery } from "@eterna/core";
 
 export class HistoryProvider implements ContextProvider {
   id = "browser.history";
@@ -21,6 +17,12 @@ export class HistoryProvider implements ContextProvider {
     types: ["custom" as const],
   };
 
+  /**
+   * Contexts already handed out by getContexts, so resolving one by id does
+   * not have to re-fetch and linearly scan the history list.
+   */
+  #recentContexts = new Map<string, Context>();
+
   async getContexts(query?: ContextQuery): Promise<Context[]> {
     try {
       const limit = query?.limit ?? 20;
@@ -31,7 +33,7 @@ export class HistoryProvider implements ContextProvider {
         startTime: Date.now() - 7 * 24 * 60 * 60 * 1000, // Last 7 days
       });
 
-      return historyItems
+      const contexts = historyItems
         .filter((item) => item.url && item.title)
         .map((item) => ({
           id: `history-${item.id}`,
@@ -46,6 +48,9 @@ export class HistoryProvider implements ContextProvider {
           },
           timestamp: Date.now(),
         }));
+
+      this.#recentContexts = new Map(contexts.map((ctx) => [ctx.id, ctx]));
+      return contexts;
     } catch (error) {
       console.error("Failed to get history context:", error);
       return [];
@@ -54,6 +59,11 @@ export class HistoryProvider implements ContextProvider {
 
   async getContext(id: string): Promise<Context | null> {
     if (!id.startsWith("history-")) return null;
+
+    // Almost always a hit: ids come from a getContexts listing. The fallback
+    // below is the expensive path (a 1000-item history fetch plus a scan).
+    const cached = this.#recentContexts.get(id);
+    if (cached) return cached;
 
     const historyId = id.replace("history-", "");
 

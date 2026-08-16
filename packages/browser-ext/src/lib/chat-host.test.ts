@@ -1,8 +1,7 @@
-import type { AgentEvent } from "@aipexstudio/aipex-core";
+import type { AgentEvent } from "@eterna/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ChatHostAgent,
-  type ChatHostAgentContext,
   type ChatPortLike,
   createChatHost,
 } from "./chat-host";
@@ -82,6 +81,64 @@ const delta = (text: string): AgentEvent => ({
 });
 
 describe("createChatHost", () => {
+  it("reports cleanly finished turns to onTurnComplete", async () => {
+    const scripted = scriptedAgent();
+    const onTurnComplete = vi.fn();
+    const host = createChatHost({
+      createAgent: async () => scripted.agent,
+      onTurnComplete,
+    });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "remember this",
+      options: {},
+    });
+    scripted.push({ type: "session_created", sessionId: "s1" });
+    scripted.push(delta("Noted."));
+    scripted.push(null);
+
+    await vi.waitFor(() => {
+      expect(onTurnComplete).toHaveBeenCalledTimes(1);
+    });
+    const run = onTurnComplete.mock.calls[0]?.[0];
+    expect(run.userText).toBe("remember this");
+    expect(run.sessionId).toBe("s1");
+    expect(
+      run.events.some((e: { type: string }) => e.type === "content_delta"),
+    ).toBe(true);
+  });
+
+  it("skips onTurnComplete for interrupted turns", async () => {
+    const scripted = scriptedAgent();
+    const onTurnComplete = vi.fn();
+    const host = createChatHost({
+      createAgent: async () => scripted.agent,
+      onTurnComplete,
+    });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
+    scripted.push(delta("partial"));
+    ui.send({ type: "interrupt", clientId: "c1", runId: "r1" });
+
+    await vi.waitFor(() => {
+      expect(ui.sent.some((m) => m.type === "turn_done")).toBe(true);
+    });
+    expect(onTurnComplete).not.toHaveBeenCalled();
+  });
+
   it("streams a turn to the attached port and buffers it for replay", async () => {
     const scripted = scriptedAgent();
     const host = createChatHost({ createAgent: async () => scripted.agent });
@@ -187,7 +244,7 @@ describe("createChatHost", () => {
     expect(liveEvents).toHaveLength(1);
   });
 
-  it("coalesces adjacent stream deltas in the replay buffer", async () => {
+  it("coalesces adjacent stream deltas in the replay buffer and on the wire", async () => {
     const scripted = scriptedAgent();
     const host = createChatHost({
       createAgent: async () => scripted.agent,
@@ -239,18 +296,59 @@ describe("createChatHost", () => {
       delta("They are both killing Base, and it needs to stop."),
     );
 
+    // Deltas are coalesced on the wire too (one port message per flush window
+    // instead of one per token). What must hold is that the streamed text
+    // arrives complete and in order.
     const liveDeltas = ui.sent.filter(
       (message) =>
         message.type === "event" && message.event.type === "content_delta",
     );
-    expect(liveDeltas).toHaveLength(3);
+    expect(liveDeltas.length).toBeGreaterThan(0);
     expect(
-      liveDeltas.map((message) =>
-        message.type === "event" && message.event.type === "content_delta"
-          ? message.event.delta
-          : "",
-      ),
-    ).toEqual(["They are both killing Base", ", and it", " needs to stop."]);
+      liveDeltas
+        .map((message) =>
+          message.type === "event" && message.event.type === "content_delta"
+            ? message.event.delta
+            : "",
+        )
+        .join(""),
+    ).toBe("They are both killing Base, and it needs to stop.");
+  });
+
+  it("flushes buffered deltas before a following non-delta event", async () => {
+    const scripted = scriptedAgent();
+    const host = createChatHost({ createAgent: async () => scripted.agent });
+    const ui = fakePort();
+    host.handlePort(ui.port);
+
+    ui.send({
+      type: "start_turn",
+      clientId: "c1",
+      runId: "r1",
+      text: "hi",
+      options: {},
+    });
+    scripted.push(delta("before"));
+    scripted.push({
+      type: "tool_call_start",
+      toolName: "read_page",
+      params: {},
+    });
+    scripted.push(delta("after"));
+    scripted.push(null);
+
+    await vi.waitFor(() => {
+      expect(host.getCurrentRun()?.done).toBe(true);
+    });
+
+    const wireTypes = ui.sent
+      .filter((message) => message.type === "event")
+      .map((message) => (message.type === "event" ? message.event.type : ""));
+    expect(wireTypes).toEqual([
+      "content_delta",
+      "tool_call_start",
+      "content_delta",
+    ]);
   });
 
   it("rejects a second turn while one is active", async () => {
@@ -351,86 +449,6 @@ describe("createChatHost", () => {
       expect(host.getRun("r2", "c1")?.done).toBe(true);
     });
     expect(onActiveChange).toHaveBeenLastCalledWith(false);
-  });
-
-  it("keeps the gateway route stable across turns in one session", async () => {
-    const first = scriptedAgent();
-    const second = scriptedAgent();
-    const contexts: Array<ChatHostAgentContext | undefined> = [];
-    const host = createChatHost({
-      createAgent: async (context) => {
-        contexts.push(context);
-        return contexts.length === 1 ? first.agent : second.agent;
-      },
-    });
-    const ui = fakePort();
-    host.handlePort(ui.port);
-
-    ui.send({
-      type: "start_turn",
-      clientId: "c1",
-      runId: "r1",
-      text: "first",
-      options: {},
-    });
-    first.push({ type: "session_created", sessionId: "session_1" });
-    first.push(null);
-    await vi.waitFor(() => {
-      expect(host.getRun("r1", "c1")?.done).toBe(true);
-    });
-
-    ui.send({
-      type: "start_turn",
-      clientId: "c1",
-      runId: "r2",
-      text: "follow up",
-      options: { sessionId: "session_1" },
-    });
-    second.push(null);
-    await vi.waitFor(() => {
-      expect(host.getRun("r2", "c1")?.done).toBe(true);
-    });
-
-    expect(contexts[0]?.routeId).toBe("c1:r1");
-    expect(contexts[1]?.routeId).toBe("c1:r1");
-  });
-
-  it("prefers a client route that survives a background host restart", async () => {
-    const contexts: Array<ChatHostAgentContext | undefined> = [];
-
-    const runOnFreshHost = async (runId: string) => {
-      const scripted = scriptedAgent();
-      const host = createChatHost({
-        createAgent: async (context) => {
-          contexts.push(context);
-          return scripted.agent;
-        },
-      });
-      const ui = fakePort();
-      host.handlePort(ui.port);
-      ui.send({
-        type: "start_turn",
-        clientId: "c1",
-        runId,
-        text: "message",
-        options: {
-          sessionId: "session_1",
-          routeId: "persistent-route",
-        },
-      });
-      scripted.push(null);
-      await vi.waitFor(() => {
-        expect(host.getRun(runId, "c1")?.done).toBe(true);
-      });
-    };
-
-    await runOnFreshHost("r1");
-    await runOnFreshHost("r2");
-
-    expect(contexts.map((context) => context?.routeId)).toEqual([
-      "persistent-route",
-      "persistent-route",
-    ]);
   });
 
   it("waits for the detached snapshot before persisting a completed run", async () => {
@@ -729,69 +747,6 @@ describe("createChatHost", () => {
     });
   });
 
-  it("invalidates local gateway identity without resetting an active web thread", async () => {
-    const scripted = scriptedAgent();
-    const freshGatewayThread = vi.fn();
-    const host = createChatHost({
-      createAgent: async () => scripted.agent,
-      freshGatewayThread,
-    });
-    const owner = fakePort();
-    const other = fakePort();
-    host.handlePort(owner.port);
-    host.handlePort(other.port);
-
-    owner.send({
-      type: "start_turn",
-      clientId: "owner",
-      runId: "r1",
-      text: "private prompt",
-      options: {},
-    });
-    other.send({
-      type: "rpc",
-      clientId: "other",
-      reqId: "rpc1",
-      method: "fresh_gateway_thread",
-      args: { model: "catgpt-browser" },
-    });
-
-    await vi.waitFor(() => {
-      expect(other.sent).toContainEqual(
-        expect.objectContaining({
-          type: "rpc_result",
-          reqId: "rpc1",
-          ok: false,
-        }),
-      );
-    });
-    expect(freshGatewayThread).toHaveBeenCalledWith("catgpt-browser", {
-      resetRemote: false,
-    });
-
-    other.send({
-      type: "rpc",
-      clientId: "other",
-      reqId: "rpc2",
-      method: "fresh_gateway_thread",
-      args: { model: "catgpt-browser", resetRemote: false },
-    });
-    await vi.waitFor(() => {
-      expect(other.sent).toContainEqual(
-        expect.objectContaining({
-          type: "rpc_result",
-          reqId: "rpc2",
-          ok: true,
-        }),
-      );
-    });
-
-    scripted.push(null);
-    await vi.waitFor(() => {
-      expect(host.getCurrentRun()?.done).toBe(true);
-    });
-  });
-
   it("binds a conversation id and exposes it on the snapshot", async () => {
     const scripted = scriptedAgent();
     const host = createChatHost({ createAgent: async () => scripted.agent });
@@ -865,10 +820,8 @@ describe("createChatHost", () => {
 
   it("answers rpc calls against the agent", async () => {
     const scripted = scriptedAgent();
-    const fresh = vi.fn();
     const host = createChatHost({
       createAgent: async () => scripted.agent,
-      freshGatewayThread: fresh,
     });
     const ui = fakePort();
     host.handlePort(ui.port);
@@ -887,22 +840,11 @@ describe("createChatHost", () => {
       method: "delete_session",
       args: { sessionId: "s9" },
     });
-    ui.send({
-      type: "rpc",
-      clientId: "c1",
-      reqId: "q3",
-      method: "fresh_gateway_thread",
-      args: { model: "gemini-3.1-pro-preview" },
-    });
-
     await vi.waitFor(() => {
-      expect(ui.sent.filter((m) => m.type === "rpc_result")).toHaveLength(3);
+      expect(ui.sent.filter((m) => m.type === "rpc_result")).toHaveLength(2);
     });
     expect(scripted.rollback).toHaveBeenCalledWith("s9");
     expect(scripted.deleteSession).toHaveBeenCalledWith("s9");
-    expect(fresh).toHaveBeenCalledWith("gemini-3.1-pro-preview", {
-      resetRemote: true,
-    });
     const results = ui.sent.filter((m) => m.type === "rpc_result");
     expect(results.every((m) => m.type === "rpc_result" && m.ok)).toBe(true);
   });

@@ -1,26 +1,23 @@
 /**
  * FileExplorer Wrapper
  *
- * Wraps the full FileExplorer implementation from aipex with proper imports for new-aipex.
- * This component uses the zenfs manager from @aipexstudio/browser-runtime.
+ * Wraps the full FileExplorer implementation from eterna with proper imports for new-eterna.
+ * This component uses the zenfs manager from @eterna/browser-runtime.
  */
 
-import {
-  Alert,
-  AlertDescription,
-} from "@aipexstudio/aipex-react/components/ui/alert";
-import { Badge } from "@aipexstudio/aipex-react/components/ui/badge";
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import type { DiskUsage, FileTreeNode } from "@eterna/browser-runtime";
+import { zenfs } from "@eterna/browser-runtime";
+import { Alert, AlertDescription } from "@eterna/react/components/ui/alert";
+import { Badge } from "@eterna/react/components/ui/badge";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@aipexstudio/aipex-react/components/ui/card";
-import { Input } from "@aipexstudio/aipex-react/components/ui/input";
-import type { DiskUsage, FileTreeNode } from "@aipexstudio/browser-runtime";
-import { zenfs } from "@aipexstudio/browser-runtime";
+} from "@eterna/react/components/ui/card";
+import { Input } from "@eterna/react/components/ui/input";
 import {
   AlertCircle,
   Files,

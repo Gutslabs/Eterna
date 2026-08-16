@@ -1,4 +1,8 @@
-import { type AppSettings, STORAGE_KEYS } from "@aipexstudio/aipex-core";
+import {
+  type AppSettings,
+  STORAGE_KEYS,
+  updateAppSettings,
+} from "@eterna/core";
 import React from "react";
 import { chromeStorageAdapter } from "../../hooks";
 import { CHATGPT_DEFAULT_MODEL, CHATGPT_MODELS } from "../../lib/ai-provider";
@@ -9,12 +13,7 @@ interface ChatGptStatus {
 }
 
 async function selectChatGptProvider(model: string) {
-  const current =
-    ((await chromeStorageAdapter.load(STORAGE_KEYS.SETTINGS)) as
-      | AppSettings
-      | undefined) ?? {};
-  await chromeStorageAdapter.save(STORAGE_KEYS.SETTINGS, {
-    ...current,
+  await updateAppSettings(chromeStorageAdapter, STORAGE_KEYS.SETTINGS, {
     aiProvider: "chatgpt",
     aiModel: model,
   });

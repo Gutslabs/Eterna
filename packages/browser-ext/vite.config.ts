@@ -13,7 +13,7 @@ import manifest from "./manifest.json";
 // aisdk() wrapper and every Agent is created with an explicit model. So for the
 // extension build we redirect `@openai/agents` (and its /utils subpath) to
 // `@openai/agents-core`, which exports the same Agent/run/tool/spans the code
-// actually imports. Resolved via the meta package (a dep of @aipexstudio/core)
+// actually imports. Resolved via the meta package (a dep of @eterna/core)
 // so it works under pnpm's nested layout without an extra dependency.
 // biome-ignore lint/correctness/noUnusedVariables: temporarily disabled in the alias list below; kept for quick re-enable after runtime verification.
 const agentsCoreAliases = (() => {
@@ -105,34 +105,37 @@ export default defineConfig({
       // debugging a "no AI response" report. Re-enable once confirmed safe.
       // ...agentsCoreAliases,
       { find: "~", replacement: path.resolve(__dirname, "./src") },
-      { find: "@", replacement: path.resolve(__dirname, "./") },
+      // Matches the tsconfig "@/*" path and the shadcn aliases in
+      // components.json, so registry components (beui) land inside src/ and
+      // resolve their own "@/lib/..." imports without being edited.
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
       // Point to workspace packages source code directly for better dev experience
       {
-        find: "@aipexstudio/aipex-core",
+        find: "@eterna/core",
         replacement: path.resolve(__dirname, "../core/src/index.ts"),
       },
       {
-        find: /^@aipexstudio\/aipex-react\/(.*)$/,
-        replacement: path.resolve(__dirname, "../aipex-react/src/$1"),
+        find: /^@eterna\/react\/(.*)$/,
+        replacement: path.resolve(__dirname, "../eterna-react/src/$1"),
       },
       {
-        find: "@aipexstudio/aipex-react",
-        replacement: path.resolve(__dirname, "../aipex-react/src/index.ts"),
+        find: "@eterna/react",
+        replacement: path.resolve(__dirname, "../eterna-react/src/index.ts"),
       },
       {
-        find: /^@aipexstudio\/browser-runtime\/(.*)$/,
+        find: /^@eterna\/browser-runtime\/(.*)$/,
         replacement: path.resolve(__dirname, "../browser-runtime/src/$1"),
       },
       {
-        find: "@aipexstudio/browser-runtime",
+        find: "@eterna/browser-runtime",
         replacement: path.resolve(__dirname, "../browser-runtime/src/index.ts"),
       },
       {
-        find: /^@aipexstudio\/dom-snapshot\/(.*)$/,
+        find: /^@eterna\/dom-snapshot\/(.*)$/,
         replacement: path.resolve(__dirname, "../dom-snapshot/src/$1"),
       },
       {
-        find: "@aipexstudio/dom-snapshot",
+        find: "@eterna/dom-snapshot",
         replacement: path.resolve(__dirname, "../dom-snapshot/src/index.ts"),
       },
     ],

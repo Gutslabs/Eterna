@@ -1,22 +1,19 @@
-import {
-  Alert,
-  AlertDescription,
-} from "@aipexstudio/aipex-react/components/ui/alert";
-import { Badge } from "@aipexstudio/aipex-react/components/ui/badge";
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import { Alert, AlertDescription } from "@eterna/react/components/ui/alert";
+import { Badge } from "@eterna/react/components/ui/badge";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@aipexstudio/aipex-react/components/ui/dialog";
+} from "@eterna/react/components/ui/dialog";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@aipexstudio/aipex-react/components/ui/tabs";
-import { Textarea } from "@aipexstudio/aipex-react/components/ui/textarea";
+} from "@eterna/react/components/ui/tabs";
+import { Textarea } from "@eterna/react/components/ui/textarea";
 import {
   AlertCircle,
   Code,

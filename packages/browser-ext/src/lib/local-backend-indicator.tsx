@@ -1,5 +1,5 @@
-import { useConfigContext } from "@aipexstudio/aipex-react/components/chatbot";
-import { cn } from "@aipexstudio/aipex-react/lib/utils";
+import { useConfigContext } from "@eterna/react/components/chatbot";
+import { cn } from "@eterna/react/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   localBackendForModel,
@@ -36,10 +36,20 @@ export function LocalBackendIndicator() {
   useEffect(() => {
     if (!backend) return;
     void check();
-    const timer = window.setInterval(() => void check(true), 15_000);
+    // Skip ticks while the document is hidden — an invisible indicator does
+    // not need a fresh localhost probe every 15s; the visibility flip
+    // re-probes immediately so the state is current when it can be seen.
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void check(true);
+    }, 15_000);
+    const onVisible = () => {
+      if (!document.hidden) void check(true);
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       probeGenerationRef.current += 1;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       if (retryTimerRef.current !== undefined) {
         window.clearTimeout(retryTimerRef.current);
       }
@@ -72,11 +82,16 @@ export function LocalBackendIndicator() {
     }
   };
 
+  // A healthy backend is not news AT ALL: render nothing. Only an error
+  // state (offline, or mid-launch recovery) earns composer space — as a red
+  // dot with the action. The probe keeps running while hidden.
+  const actionable = launching || state === "offline";
+  if (!actionable) return null;
   const label = launching
     ? "Starting Eterna"
     : state === "checking"
-      ? `${backend.label} checking`
-      : `${backend.label} ${state}`;
+      ? "Local backend checking"
+      : `Local backend ${state}`;
 
   return (
     <button
@@ -95,7 +110,8 @@ export function LocalBackendIndicator() {
           : `${label} — click to retry`)
       }
       className={cn(
-        "inline-flex min-h-7 items-center gap-1.5 rounded-full border border-border px-2 text-xs transition-colors hover:bg-accent/50",
+        "inline-flex min-h-7 items-center gap-1.5 rounded-full border border-border text-xs transition-colors hover:bg-accent/50",
+        actionable ? "px-2" : "px-1.5",
         state === "offline" ? "text-destructive" : "text-muted-foreground",
       )}
     >
@@ -109,13 +125,9 @@ export function LocalBackendIndicator() {
             "animate-pulse bg-muted-foreground",
         )}
       />
-      <span>
-        {launching
-          ? "Starting…"
-          : state === "offline"
-            ? "Start Eterna"
-            : backend.label}
-      </span>
+      {actionable ? (
+        <span>{launching ? "Starting…" : "Start Eterna"}</span>
+      ) : null}
     </button>
   );
 }

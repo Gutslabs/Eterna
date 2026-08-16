@@ -3,11 +3,7 @@
  * Provides contexts from browser bookmarks
  */
 
-import type {
-  Context,
-  ContextProvider,
-  ContextQuery,
-} from "@aipexstudio/aipex-core";
+import type { Context, ContextProvider, ContextQuery } from "@eterna/core";
 
 export class BookmarksProvider implements ContextProvider {
   id = "browser.bookmarks";

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Eterna",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Make your browser an AI browser - no migration, no browser installation, no code writing",
   "icons": {
     "16": "assets/icon16.png",

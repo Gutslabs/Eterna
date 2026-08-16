@@ -1,4 +1,4 @@
-# AIPex Private 分支功能迁移策略
+# Eterna Private 分支功能迁移策略
 
 **版本**: 2.0
 **创建日期**: 2026-01-03
@@ -52,7 +52,7 @@
        │                │  │                 │
        ▼                │  ▼                 │
 ┌─────────────────┐     │  ┌─────────────────┐
-│ @browser-runtime│     │  │  @aipex-react   │
+│ @browser-runtime│     │  │  @eterna-react   │
 │ (Chrome 实现)   │     │  │  (React UI)     │
 │ - CDP 集成      │     │  │  - 纯 UI 组件   │
 │ - 工具实现      │     │  │  - Hooks        │
@@ -84,8 +84,8 @@
 |-----|------|---------|
 | ✅ `@core` 无依赖 | 不依赖任何包或平台 API | 构建失败 |
 | ✅ `@browser-runtime` → `@core` | 仅依赖 core 接口 | 循环依赖 |
-| ✅ `@aipex-react` → `@core` | 仅依赖 core 接口 | UI 层污染 |
-| ❌ `@aipex-react` ↛ `@browser-runtime` | **严格禁止** | 平台耦合 |
+| ✅ `@eterna-react` → `@core` | 仅依赖 core 接口 | UI 层污染 |
+| ❌ `@eterna-react` ↛ `@browser-runtime` | **严格禁止** | 平台耦合 |
 | ✅ `@use-cases` → 所有下层包 | 可依赖所有包 | N/A |
 | ✅ `browser-ext` → 所有包 | 最终组装点 | N/A |
 
@@ -162,7 +162,7 @@
 
 **关键特性**:
 - ✅ Accessibility Tree 集成 (`Accessibility.getFullAXTree`)
-- ✅ 智能节点 ID (`data-aipex-nodeid`)
+- ✅ 智能节点 ID (`data-eterna-nodeid`)
 - ✅ Puppeteer 风格的"有趣节点"算法
 - ✅ 并发控制 (p-limit)
 - ✅ 搜索与查询功能
@@ -331,15 +331,15 @@
 3. 连接到 `intervention-manager`
 4. 集成测试
 
-#### 2.4 UI 组件层 → @aipex-react
+#### 2.4 UI 组件层 → @eterna-react
 
 | Private 源路径 | 目标路径 |
 |---------------|----------|
-| `src/interventions/components/InterventionCard.tsx` | `packages/aipex-react/src/components/intervention/InterventionCard.tsx` |
-| `src/interventions/components/MonitorCard.tsx` | `packages/aipex-react/src/components/intervention/MonitorCard.tsx` |
-| `src/interventions/components/VoiceCard.tsx` | `packages/aipex-react/src/components/intervention/VoiceCard.tsx` |
-| `src/interventions/components/SelectionCard.tsx` | `packages/aipex-react/src/components/intervention/SelectionCard.tsx` |
-| `src/interventions/components/InterventionModeToggle.tsx` | `packages/aipex-react/src/components/intervention/InterventionModeToggle.tsx` |
+| `src/interventions/components/InterventionCard.tsx` | `packages/eterna-react/src/components/intervention/InterventionCard.tsx` |
+| `src/interventions/components/MonitorCard.tsx` | `packages/eterna-react/src/components/intervention/MonitorCard.tsx` |
+| `src/interventions/components/VoiceCard.tsx` | `packages/eterna-react/src/components/intervention/VoiceCard.tsx` |
+| `src/interventions/components/SelectionCard.tsx` | `packages/eterna-react/src/components/intervention/SelectionCard.tsx` |
+| `src/interventions/components/InterventionModeToggle.tsx` | `packages/eterna-react/src/components/intervention/InterventionModeToggle.tsx` |
 
 **组件职责**:
 - `InterventionCard`: 通用干预卡片容器
@@ -430,15 +430,15 @@
 4. 添加依赖: `@ricky0123/vad-web`
 5. 单元测试 (mock 音频 API)
 
-#### 3.2 UI 层 → @aipex-react
+#### 3.2 UI 层 → @eterna-react
 
 | Private 源路径 | 目标路径 | 行数 | 说明 |
 |---------------|----------|------|------|
-| `src/lib/components/voice-mode/voice-input.tsx` | `packages/aipex-react/src/components/voice/VoiceInput.tsx` | ~250 | 主组件 |
-| `src/lib/components/voice-mode/particle-system.ts` | `packages/aipex-react/src/components/voice/particle-system.ts` | ~400 | WebGL 粒子 |
-| `src/lib/components/voice-mode/shaders.ts` | `packages/aipex-react/src/components/voice/shaders.ts` | ~150 | GLSL 着色器 |
-| `src/lib/components/voice-mode/config.ts` | `packages/aipex-react/src/components/voice/config.ts` | ~50 | 配置 |
-| `src/lib/components/voice-mode/types.ts` | `packages/aipex-react/src/components/voice/types.ts` | ~30 | 类型 |
+| `src/lib/components/voice-mode/voice-input.tsx` | `packages/eterna-react/src/components/voice/VoiceInput.tsx` | ~250 | 主组件 |
+| `src/lib/components/voice-mode/particle-system.ts` | `packages/eterna-react/src/components/voice/particle-system.ts` | ~400 | WebGL 粒子 |
+| `src/lib/components/voice-mode/shaders.ts` | `packages/eterna-react/src/components/voice/shaders.ts` | ~150 | GLSL 着色器 |
+| `src/lib/components/voice-mode/config.ts` | `packages/eterna-react/src/components/voice/config.ts` | ~50 | 配置 |
+| `src/lib/components/voice-mode/types.ts` | `packages/eterna-react/src/components/voice/types.ts` | ~30 | 类型 |
 
 **3D 可视化特性**:
 - WebGL 粒子系统 (2000+ 粒子)
@@ -793,7 +793,7 @@ const api = {
 
 ### 背景
 
-技能系统是 AIPex 的插件机制，允许用户安装自定义技能包 (.zip)，扩展 AI 能力。
+技能系统是 Eterna 的插件机制，允许用户安装自定义技能包 (.zip)，扩展 AI 能力。
 
 ### 架构设计
 
@@ -877,14 +877,14 @@ skill-example.zip
 3. 连接到 `SkillManager`
 4. 集成测试
 
-#### 6.3 UI 组件 → @aipex-react
+#### 6.3 UI 组件 → @eterna-react
 
 | Private 源路径 | 目标路径 |
 |---------------|----------|
-| `src/skill/components/skills/SkillCard.tsx` | `packages/aipex-react/src/components/skill/SkillCard.tsx` |
-| `src/skill/components/skills/SkillDetails.tsx` | `packages/aipex-react/src/components/skill/SkillDetails.tsx` |
-| `src/skill/components/skills/SkillList.tsx` | `packages/aipex-react/src/components/skill/SkillList.tsx` |
-| `src/skill/components/skills/SkillUploader.tsx` | `packages/aipex-react/src/components/skill/SkillUploader.tsx` |
+| `src/skill/components/skills/SkillCard.tsx` | `packages/eterna-react/src/components/skill/SkillCard.tsx` |
+| `src/skill/components/skills/SkillDetails.tsx` | `packages/eterna-react/src/components/skill/SkillDetails.tsx` |
+| `src/skill/components/skills/SkillList.tsx` | `packages/eterna-react/src/components/skill/SkillList.tsx` |
+| `src/skill/components/skills/SkillUploader.tsx` | `packages/eterna-react/src/components/skill/SkillUploader.tsx` |
 
 **组件职责**:
 - `SkillCard`: 单个技能卡片
@@ -898,14 +898,14 @@ skill-example.zip
 3. 移除平台依赖 (Props 化)
 4. React 测试
 
-#### 6.4 文件管理器 → @aipex-react
+#### 6.4 文件管理器 → @eterna-react
 
 | Private 源路径 | 目标路径 |
 |---------------|----------|
-| `src/skill/components/file-manager/FileExplorer.tsx` | `packages/aipex-react/src/components/file-manager/FileExplorer.tsx` |
-| `src/skill/components/file-manager/FileTree.tsx` | `packages/aipex-react/src/components/file-manager/FileTree.tsx` |
-| `src/skill/components/file-manager/FilePreview.tsx` | `packages/aipex-react/src/components/file-manager/FilePreview.tsx` |
-| `src/skill/components/file-manager/FileEditor.tsx` | `packages/aipex-react/src/components/file-manager/FileEditor.tsx` |
+| `src/skill/components/file-manager/FileExplorer.tsx` | `packages/eterna-react/src/components/file-manager/FileExplorer.tsx` |
+| `src/skill/components/file-manager/FileTree.tsx` | `packages/eterna-react/src/components/file-manager/FileTree.tsx` |
+| `src/skill/components/file-manager/FilePreview.tsx` | `packages/eterna-react/src/components/file-manager/FilePreview.tsx` |
+| `src/skill/components/file-manager/FileEditor.tsx` | `packages/eterna-react/src/components/file-manager/FileEditor.tsx` |
 
 **功能**:
 - 树形目录结构
@@ -1009,15 +1009,15 @@ packages/use-cases/
 1. **创建 package.json**:
 ```json
 {
-  "name": "@aipex/use-cases",
+  "name": "@eterna/use-cases",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "dependencies": {
-    "@aipex/core": "workspace:*",
-    "@aipex/browser-runtime": "workspace:*",
-    "@aipex/aipex-react": "workspace:*",
+    "@eterna/core": "workspace:*",
+    "@eterna/browser-runtime": "workspace:*",
+    "@eterna/eterna-react": "workspace:*",
     "pdf-lib": "^1.17.1",
     "html2canvas": "^1.4.1",
     "gifshot": "^0.4.5",
@@ -1040,7 +1040,7 @@ packages/use-cases/
   "references": [
     { "path": "../core" },
     { "path": "../browser-runtime" },
-    { "path": "../aipex-react" }
+    { "path": "../eterna-react" }
   ]
 }
 ```
@@ -1124,7 +1124,7 @@ packages/use-cases/
 
 在 `packages/browser-ext/src/sidepanel/` 中添加用例入口:
 ```tsx
-import { UseCasesHome } from '@aipex/use-cases';
+import { UseCasesHome } from '@eterna/use-cases';
 
 // 在侧边栏中添加"用例"标签
 <Tabs>
@@ -1186,16 +1186,16 @@ import { UseCasesHome } from '@aipex/use-cases';
 3. 更新导入路径
 4. 测试每个服务
 
-#### 8.2 UI 组件 → @aipex-react
+#### 8.2 UI 组件 → @eterna-react
 
 | Private 源路径 | 目标路径 | 说明 |
 |---------------|----------|------|
-| `src/lib/components/chatbot/conversation-history.tsx` | `packages/aipex-react/src/components/chatbot/components/conversation-history.tsx` | 对话历史 |
-| `src/lib/components/chatbot/update-banner.tsx` | `packages/aipex-react/src/components/chatbot/components/update-banner.tsx` | 更新横幅 |
-| `src/lib/components/chatbot/TokenUsageIndicator.tsx` | `packages/aipex-react/src/components/chatbot/components/token-usage.tsx` | Token 使用 |
-| `src/lib/components/chatbot/replay-progress-overlay.tsx` | `packages/aipex-react/src/components/chatbot/components/replay-progress.tsx` | 回放进度 |
-| `src/lib/components/auth/AuthProvider.tsx` | `packages/aipex-react/src/components/auth/AuthProvider.tsx` | 认证提供者 |
-| `src/lib/components/auth/UserProfile.tsx` | `packages/aipex-react/src/components/auth/UserProfile.tsx` | 用户资料 |
+| `src/lib/components/chatbot/conversation-history.tsx` | `packages/eterna-react/src/components/chatbot/components/conversation-history.tsx` | 对话历史 |
+| `src/lib/components/chatbot/update-banner.tsx` | `packages/eterna-react/src/components/chatbot/components/update-banner.tsx` | 更新横幅 |
+| `src/lib/components/chatbot/TokenUsageIndicator.tsx` | `packages/eterna-react/src/components/chatbot/components/token-usage.tsx` | Token 使用 |
+| `src/lib/components/chatbot/replay-progress-overlay.tsx` | `packages/eterna-react/src/components/chatbot/components/replay-progress.tsx` | 回放进度 |
+| `src/lib/components/auth/AuthProvider.tsx` | `packages/eterna-react/src/components/auth/AuthProvider.tsx` | 认证提供者 |
+| `src/lib/components/auth/UserProfile.tsx` | `packages/eterna-react/src/components/auth/UserProfile.tsx` | 用户资料 |
 
 **实施步骤**:
 1. 迁移聊天增强组件 (4 个)
@@ -1232,8 +1232,8 @@ import { UseCasesHome } from '@aipex/use-cases';
 
 | Private 源路径 | 目标路径 | 说明 |
 |---------------|----------|------|
-| `src/lib/i18n/locales/en.json` | `packages/aipex-react/src/i18n/locales/en.json` | 合并英文 |
-| `src/lib/i18n/locales/zh.json` | `packages/aipex-react/src/i18n/locales/zh.json` | 合并中文 |
+| `src/lib/i18n/locales/en.json` | `packages/eterna-react/src/i18n/locales/en.json` | 合并英文 |
+| `src/lib/i18n/locales/zh.json` | `packages/eterna-react/src/i18n/locales/zh.json` | 合并中文 |
 | 其他语言文件 | 合并到现有结构 | 逐个合并 |
 
 **实施步骤**:
@@ -1547,7 +1547,7 @@ git revert <migration-start-commit>
 - **决策**: 创建独立的 `@use-cases` 包
 - **理由**:
   1. 用例是高层业务逻辑，依赖所有下层包
-  2. 保持 `@aipex-react` 纯粹的 UI 层
+  2. 保持 `@eterna-react` 纯粹的 UI 层
   3. 便于未来扩展更多用例
 - **替代方案**: 放在 `browser-ext` 中（不利于代码组织）
 
@@ -1562,8 +1562,8 @@ git revert <migration-start-commit>
   - Isolated World (不支持动态加载)
   - Web Workers (无文件系统)
 
-**ADR-003: 为什么干预系统的 UI 组件在 @aipex-react？**
-- **决策**: 干预 UI 组件放在 `@aipex-react`
+**ADR-003: 为什么干预系统的 UI 组件在 @eterna-react？**
+- **决策**: 干预 UI 组件放在 `@eterna-react`
 - **理由**:
   1. 遵守架构规则 (UI 层平台无关)
   2. 可复用于其他平台 (未来)

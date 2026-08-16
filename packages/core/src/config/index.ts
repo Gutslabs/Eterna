@@ -7,10 +7,27 @@ export {
 } from "./ai-providers.js";
 export { DEFAULT_CONVERSATION_CONFIG } from "./defaults.js";
 export {
+  baseModelId,
+  composeModelSelection,
+  defaultReasoningLevelFor,
+  type ModelSelection,
+  normalizeModelSelection,
+  REASONING_LEVEL_LABELS,
+  REASONING_LEVELS,
+  type ReasoningLevel,
+  reasoningLevelsFor,
+  splitModelSelection,
+  supportsReasoningLevels,
+} from "./reasoning-levels.js";
+export {
   type AppSettings,
+  type AppSettingsUpdate,
   type CustomModelConfig,
+  changedAppSettings,
   DEFAULT_APP_SETTINGS,
+  mergeAppSettings,
   type ProviderType,
+  updateAppSettings,
 } from "./settings.js";
 export {
   type AutomationMode,

@@ -14,7 +14,7 @@
       "entry": ["src/index.ts", "src/hooks/index.ts"],
       "project": ["src/**/*.{ts,tsx,js}"]
     },
-    "packages/aipex-react": {
+    "packages/eterna-react": {
       "entry": [
         "src/index.ts",
         "src/adapters/*.ts",

@@ -1,5 +1,5 @@
 {
-  "name": "@aipexstudio/aipex-core",
+  "name": "@eterna/core",
   "version": "0.1.0",
   "description": "Eterna Agent - Pure TypeScript AI Agent Framework",
   "main": "./dist/src/index.js",

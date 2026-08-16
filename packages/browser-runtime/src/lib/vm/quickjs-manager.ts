@@ -7,6 +7,10 @@
  */
 
 import { default as RELEASE_SYNC } from "@jitl/quickjs-ng-wasmfile-release-sync";
+// STATIC import of the emscripten module: the variant's own importModuleLoader
+// does a dynamic import(), which Vite wraps with a window-dependent preload
+// helper — that crashes in the MV3 service worker ("window is not defined").
+import emscriptenModuleLoader from "@jitl/quickjs-ng-wasmfile-release-sync/emscripten-module";
 // Import the WASM file as a URL so Vite/bundler handles it correctly
 // This ensures the wasm is properly bundled and the URL is correct at runtime
 import quickjsWasmUrl from "@jitl/quickjs-ng-wasmfile-release-sync/wasm?url";
@@ -29,8 +33,18 @@ interface QuickJSVariantLike {
   >;
 }
 
-// Type assertion for the variant - the default export type is not fully recognized
-const variant = RELEASE_SYNC as unknown as QuickJSVariantLike;
+// Type assertion for the variant - the default export type is not fully
+// recognized. importModuleLoader is overridden with the statically imported
+// module so no dynamic import happens at runtime (see import note above).
+const variant = {
+  ...(RELEASE_SYNC as unknown as QuickJSVariantLike),
+  importModuleLoader: () =>
+    Promise.resolve(
+      emscriptenModuleLoader as unknown as (
+        options?: Record<string, unknown>,
+      ) => unknown,
+    ),
+} satisfies QuickJSVariantLike;
 
 interface ExecutionContext {
   skillId: string;

@@ -11,7 +11,7 @@ async function buildDomSnapshot(
   prefix: string = "dom",
 ) {
   return frame.evaluate((prefixValue) => {
-    const NODE_ID_ATTR = "data-aipex-nodeid";
+    const NODE_ID_ATTR = "data-eterna-nodeid";
     let counter = 0;
     const ensureId = (element: Element) => {
       const existing = element.getAttribute(NODE_ID_ATTR);
@@ -192,7 +192,7 @@ describe("SnapshotManager (Puppeteer)", () => {
     expect(buttonNode).toBeDefined();
   });
 
-  it("should inject data-aipex-nodeid attributes to page elements", async () => {
+  it("should inject data-eterna-nodeid attributes to page elements", async () => {
     await testContext.page.setContent(
       html`<main>
         <button id="test-btn">Test Button</button>
@@ -216,7 +216,7 @@ describe("SnapshotManager (Puppeteer)", () => {
 
     const nodeIdInPage = await testContext.page.evaluate((_nodeId) => {
       const btn = document.querySelector("#test-btn");
-      return btn?.getAttribute("data-aipex-nodeid");
+      return btn?.getAttribute("data-eterna-nodeid");
     }, buttonNode?.id);
 
     expect(nodeIdInPage).toBe(buttonNode?.id);

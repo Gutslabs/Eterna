@@ -5,13 +5,13 @@
  * Generates synthetic sounds dynamically without requiring audio files.
  */
 
-import { chromeStorageAdapter } from "@aipexstudio/browser-runtime";
+import { chromeStorageAdapter } from "@eterna/browser-runtime";
 
 /**
  * Sound effect types
  */
 export type SoundEffectType =
-  | "enter-immersive" // User enters focus mode (focus on Chrome + AIPex group)
+  | "enter-immersive" // User enters focus mode (focus on Chrome + Eterna group)
   | "enter-background" // User enters background mode (switches away)
   | "conversation-start" // Conversation begins
   | "conversation-end"; // Conversation ends

@@ -10,7 +10,7 @@
  * Must be rendered inside a ChatbotProvider so useChatContext() is available.
  */
 
-import { useChatContext } from "@aipexstudio/aipex-react/components/chatbot/context";
+import { useChatContext } from "@eterna/react/components/chatbot/context";
 import { useEffect, useRef } from "react";
 
 interface ImagePayload {

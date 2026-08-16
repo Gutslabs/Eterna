@@ -50,12 +50,17 @@ export async function getImageSize(
   }
 }
 
-/** Downscale (if wider than maxWidth) and re-encode as JPEG at the given quality. */
-export async function compressImage(
+/**
+ * Downscale (if wider than maxWidth) and re-encode as JPEG at the given
+ * quality, returning the output dimensions alongside the data URL — callers
+ * that need the size would otherwise decode the (multi-MB) image a second
+ * time via getImageSize just to read two integers.
+ */
+export async function compressImageWithSize(
   dataUrl: string,
   quality = 0.6,
   maxWidth = 1024,
-): Promise<string> {
+): Promise<{ dataUrl: string; width: number; height: number }> {
   const bitmap = await createImageBitmap(await dataUrlToBlob(dataUrl));
   try {
     let width = bitmap.width;
@@ -71,10 +76,19 @@ export async function compressImage(
     }
     ctx.drawImage(bitmap, 0, 0, width, height);
     const blob = await canvas.convertToBlob({ type: "image/jpeg", quality });
-    return await blobToDataUrl(blob);
+    return { dataUrl: await blobToDataUrl(blob), width, height };
   } finally {
     bitmap.close();
   }
+}
+
+/** Downscale (if wider than maxWidth) and re-encode as JPEG at the given quality. */
+export async function compressImage(
+  dataUrl: string,
+  quality = 0.6,
+  maxWidth = 1024,
+): Promise<string> {
+  return (await compressImageWithSize(dataUrl, quality, maxWidth)).dataUrl;
 }
 
 /** Crop a data-URL image to a pixel region. */

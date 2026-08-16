@@ -9,7 +9,7 @@
  * AgentEvents must be flattened before sending and revived on receipt.
  */
 
-import type { AgentEvent, ImageInput } from "@aipexstudio/aipex-core";
+import type { AgentEvent, ImageInput } from "@eterna/core";
 
 export const CHAT_PORT_NAME = "eterna-chat";
 
@@ -24,7 +24,6 @@ export type WireAgentEvent = AgentEvent; // structurally identical; error fields
 
 export interface StartTurnOptions {
   sessionId?: string;
-  routeId?: string;
   contexts?: unknown[];
   images?: ImageInput[];
 }
@@ -65,10 +64,7 @@ export type ChatHostInbound =
       type: "rpc";
       clientId: string;
       reqId: string;
-      method:
-        | "rollback_last_assistant_turn"
-        | "delete_session"
-        | "fresh_gateway_thread";
+      method: "rollback_last_assistant_turn" | "delete_session";
       args: Record<string, unknown>;
     };
 

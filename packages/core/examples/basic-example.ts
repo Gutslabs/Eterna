@@ -1,11 +1,11 @@
 import { google } from "@ai-sdk/google";
 import { z } from "zod";
 import {
-  AIPex,
   aisdk,
   ConversationCompressor,
   ConversationManager,
   calculatorTool,
+  Eterna,
   httpFetchTool,
   InMemoryStorage,
   type SerializedSession,
@@ -14,7 +14,7 @@ import {
 } from "../src/index.js";
 
 async function main() {
-  console.log("🤖 AIPex Core - Basic Example\n");
+  console.log("🤖 Eterna Core - Basic Example\n");
 
   const model = aisdk(google("gemini-2.5-flash"));
 
@@ -23,7 +23,7 @@ async function main() {
   console.log("User: What is 15 * 234?");
   console.log("Assistant: ");
 
-  const simpleAgent = AIPex.create({
+  const simpleAgent = Eterna.create({
     instructions: "You are a helpful assistant that can perform calculations.",
     model,
     tools: [calculatorTool],
@@ -47,7 +47,7 @@ async function main() {
   const storage = new SessionStorage(new InMemoryStorage<SerializedSession>());
   const manager = new ConversationManager(storage);
 
-  const agent = AIPex.create({
+  const agent = Eterna.create({
     instructions: "You are a helpful assistant with memory.",
     model,
     tools: [calculatorTool, httpFetchTool],
@@ -103,7 +103,7 @@ async function main() {
     },
   });
 
-  const weatherAgent = AIPex.create({
+  const weatherAgent = Eterna.create({
     instructions: "You are a weather assistant.",
     model,
     tools: [weatherTool],
@@ -135,7 +135,7 @@ async function main() {
     compressor,
   });
 
-  const compressAgent = AIPex.create({
+  const compressAgent = Eterna.create({
     instructions: "You are a helpful assistant.",
     model,
     conversationManager: compressManager,

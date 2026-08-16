@@ -1,11 +1,7 @@
-import {
-  isClaudeGatewayModel,
-  isGeminiGatewayModel,
-  isXaiGatewayModel,
-} from "./ai-provider";
+import { CLI_PROXY_API_KEY, isCliProxyModel } from "./ai-provider";
 
 export interface LocalBackendDescriptor {
-  key: "gpt-web" | "claude-web" | "cliproxy";
+  key: "cliproxy";
   label: string;
   healthUrl: string;
 }
@@ -21,25 +17,7 @@ const cache = new Map<
 export function localBackendForModel(
   model: string | undefined,
 ): LocalBackendDescriptor | null {
-  if (model?.startsWith("catgpt-browser")) {
-    return {
-      key: "gpt-web",
-      label: "gpt-web",
-      healthUrl: "http://localhost:8000/healthz",
-    };
-  }
-  if (model?.startsWith("claude-browser")) {
-    return {
-      key: "claude-web",
-      label: "claude-web",
-      healthUrl: "http://localhost:8001/healthz",
-    };
-  }
-  if (
-    isGeminiGatewayModel(model) ||
-    isXaiGatewayModel(model) ||
-    isClaudeGatewayModel(model)
-  ) {
+  if (isCliProxyModel(model)) {
     return {
       key: "cliproxy",
       label: "CLIProxy",
@@ -66,6 +44,9 @@ export async function probeLocalBackend(
   const pending = fetch(backend.healthUrl, {
     signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     cache: "no-store",
+    // Authenticated so the probe doesn't spray 401s into the console; any
+    // HTTP response still counts as reachable below.
+    headers: { Authorization: `Bearer ${CLI_PROXY_API_KEY}` },
   })
     .then(() => true)
     .catch(() => false)

@@ -1,4 +1,4 @@
-import type { FunctionTool } from "@aipexstudio/aipex-core";
+import type { FunctionTool } from "@eterna/core";
 import type { z } from "zod";
 import {
   createBookmarkFolderTool,
@@ -23,13 +23,14 @@ import {
   searchHistoryTool,
 } from "./history";
 import { interventionTools } from "./interventions/index.js";
-import { forgetTool, rememberTool } from "./memory";
+import { forgetTool, recallTool, rememberTool } from "./memory";
 import {
   getPageMetadataTool,
   highlightElementTool,
   highlightTextInlineTool,
   scrollToElementTool,
 } from "./page";
+import { updatePlanTool } from "./plan";
 import { readPageTool } from "./read-page";
 import { readUrlTool } from "./read-url";
 import {
@@ -67,20 +68,19 @@ import {
   updateTabGroupTool,
 } from "./tools/tab-groups";
 import { uploadFileToInputTool } from "./tools/upload-file";
-import { webSearchTool } from "./web";
 import { getYoutubeTranscriptTool } from "./youtube-transcript";
 
 /**
  * All browser tools registered for AI use
- * Total: 56 tools (52 core + 4 intervention tools)
+ * Total: 57 tools (53 core + 4 intervention tools)
  *
  * Deliberately NOT registered:
- * - duplicate_tab (not in aipex)
+ * - duplicate_tab (not in eterna)
  * - wait (replaced by computer tool's wait action)
  * - capture_screenshot_to_clipboard (not enabled in default bundle)
  * - read_clipboard_image / get_clipboard_image_info (P1 clipboard tools – require security review)
- * - download_text_as_markdown (not enabled in aipex)
- * - download_current_chat_images (architecture issue, not enabled in aipex)
+ * - download_text_as_markdown (not enabled in eterna)
+ * - download_current_chat_images (architecture issue, not enabled in eterna)
  * - organize_tabs (stub implementation, disabled until AI grouping is complete;
  *   the agent can group tabs itself via get_all_tabs + create_tab_group)
  * - delete_bookmark_folder (recursive mass deletion – too destructive for the default bundle)
@@ -140,7 +140,8 @@ const browserFunctionTools: BrowserFunctionTool[] = [
   uploadFileToInputTool,
   computerTool,
 
-  // Page Content & web (9 tools)
+  // Page Content & web (8 tools) — no app-level web search: models with
+  // built-in web access use their own; read_url covers reading a given link.
   getPageMetadataTool,
   scrollToElementTool,
   highlightElementTool,
@@ -149,11 +150,14 @@ const browserFunctionTools: BrowserFunctionTool[] = [
   readUrlTool,
   readPageTool,
   extractStructuredDataTool,
-  webSearchTool,
 
-  // Memory (2 tools)
+  // Memory (3 tools)
   rememberTool,
   forgetTool,
+  recallTool,
+
+  // Plan (1 tool) — Codex-style visible todo list
+  updatePlanTool,
 
   // Screenshot (3 tools)
   captureScreenshotTool,
@@ -177,13 +181,17 @@ export const allBrowserTools: FunctionTool[] =
 export type { BrowserFunctionTool };
 
 // Note: takeSnapshotTool is not included in allBrowserTools as it's called internally
-// Skills tools are enabled to match aipex tool set
+// Skills tools are enabled to match eterna tool set
 
 // Export intervention tools separately for optional registration
 export { interventionTools } from "./interventions/index.js";
 
-// Skill tools, re-exported for composing custom toolsets (e.g. research subagents)
-export { skillTools } from "./skill.js";
+// Skill tools, re-exported for composing custom toolsets
+export {
+  renderSkillIndexForPrompt,
+  resolveSkillTurnContexts,
+  skillTools,
+} from "./skill.js";
 
 interface ToolRegistryLike {
   register(tool: (typeof allBrowserTools)[number]): unknown;
@@ -202,11 +210,21 @@ export function registerDefaultBrowserTools<T extends ToolRegistryLike>(
 }
 
 export {
+  importLocalMemoriesOnce,
   loadMemories,
   type MemoryEntry,
   renderMemoriesForPrompt,
 } from "./memory";
 export { captureViewportForAmbient } from "./screenshot";
+export {
+  type ConversationTurn,
+  captureConversationToSupermemory,
+  fetchSupermemoryProfileCached,
+  loadSupermemoryConfig,
+  renderProfileForPrompt,
+  type SupermemoryConfig,
+  type SupermemoryProfile,
+} from "./supermemory-client";
 export {
   executeScriptInActiveTab,
   executeScriptInTab,
@@ -219,13 +237,6 @@ export {
   twitterSearchTool,
   twitterUserTool,
 } from "./twitter";
-export {
-  htmlToText,
-  parseDuckDuckGoHtml,
-  type WebSearchResult,
-  webFetchTool,
-  webResearchTools,
-} from "./web";
 export {
   fetchYoutubeTranscriptForTab,
   isYoutubeVideoUrl,

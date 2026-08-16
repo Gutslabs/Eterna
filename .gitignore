@@ -44,3 +44,9 @@ keys.json
 .cursor/
 
 .idea/
+
+# Python bytecode from brand asset generators
+__pycache__/
+
+# Supermemory local data (server started from repo dir)
+.supermemory/

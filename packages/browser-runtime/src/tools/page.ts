@@ -1,4 +1,4 @@
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
 import { getActiveTab } from "./tab-utils";
 
@@ -109,7 +109,8 @@ export const scrollToElementTool = tool({
  */
 export const highlightElementTool = tool({
   name: "highlight_element",
-  description: "Permanently highlight DOM elements with drop shadow effect",
+  description:
+    "Visually highlight elements on the page (drop-shadow outline) to show the user where something is — use when they ask 'where is…' or you want to point at what you found. Permanent by default; pass duration for a temporary flash.",
   parameters: z.object({
     selector: z.string().describe("CSS selector of the element to highlight"),
     color: z
@@ -225,7 +226,7 @@ export const highlightElementTool = tool({
 export const highlightTextInlineTool = tool({
   name: "highlight_text_inline",
   description:
-    "Highlight specific words or phrases within text content using inline styling",
+    "Highlight specific words or phrases within the page's text (inline marker styling) — point the user at exact wording, e.g. 'show me where it says X'.",
   parameters: z.object({
     selector: z
       .string()
@@ -313,11 +314,11 @@ export const highlightTextInlineTool = tool({
           let totalMatches = 0;
 
           // Create highlight styles if not already present
-          if (!document.getElementById("aipex-text-highlight-styles")) {
+          if (!document.getElementById("eterna-text-highlight-styles")) {
             const styleSheet = document.createElement("style");
-            styleSheet.id = "aipex-text-highlight-styles";
+            styleSheet.id = "eterna-text-highlight-styles";
             styleSheet.textContent = `
-              .aipex-text-highlight {
+              .eterna-text-highlight {
                 color: ${highlightColor} !important;
                 background-color: ${backgroundColor} !important;
                 font-weight: ${fontWeight} !important;
@@ -326,7 +327,7 @@ export const highlightTextInlineTool = tool({
                 transition: all 0.2s ease;
               }
 
-              .aipex-text-highlight:hover {
+              .eterna-text-highlight:hover {
                 background-color: rgba(220, 20, 60, 0.1) !important;
               }
             `;
@@ -375,7 +376,7 @@ export const highlightTextInlineTool = tool({
 
               // Add highlighted match
               const span = document.createElement("span");
-              span.className = "aipex-text-highlight";
+              span.className = "eterna-text-highlight";
               span.textContent = match;
               fragment.appendChild(span);
 

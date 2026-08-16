@@ -1,4 +1,4 @@
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
 
 export interface TabGroup {
@@ -44,21 +44,31 @@ export async function ungroupAllTabs(): Promise<{
  * Get all tab groups across all windows
  */
 export async function getAllTabGroups(): Promise<TabGroup[]> {
-  const groups = await chrome.tabGroups.query({});
+  // One tabs query, counted by groupId — a per-group query made this N+1
+  // extension API round-trips just to produce tabCount.
+  const [groups, allTabs] = await Promise.all([
+    chrome.tabGroups.query({}),
+    chrome.tabs.query({}),
+  ]);
 
-  return Promise.all(
-    groups.map(async (group) => {
-      const tabs = await chrome.tabs.query({ groupId: group.id });
-      return {
-        id: group.id,
-        title: group.title || "",
-        color: group.color || "grey",
-        collapsed: group.collapsed || false,
-        windowId: group.windowId,
-        tabCount: tabs.length,
-      };
-    }),
-  );
+  const tabCountByGroup = new Map<number, number>();
+  for (const tab of allTabs) {
+    if (typeof tab.groupId === "number" && tab.groupId !== -1) {
+      tabCountByGroup.set(
+        tab.groupId,
+        (tabCountByGroup.get(tab.groupId) ?? 0) + 1,
+      );
+    }
+  }
+
+  return groups.map((group) => ({
+    id: group.id,
+    title: group.title || "",
+    color: group.color || "grey",
+    collapsed: group.collapsed || false,
+    windowId: group.windowId,
+    tabCount: tabCountByGroup.get(group.id) ?? 0,
+  }));
 }
 
 /**

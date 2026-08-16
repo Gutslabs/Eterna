@@ -9,7 +9,11 @@
  * straight to the full history.
  */
 
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import {
+  type ConversationData,
+  conversationStorage,
+} from "@eterna/browser-runtime";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,13 +21,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@aipexstudio/aipex-react/components/ui/dropdown-menu";
-import { useTranslation } from "@aipexstudio/aipex-react/i18n/context";
-import { cn } from "@aipexstudio/aipex-react/lib/utils";
-import {
-  type ConversationData,
-  conversationStorage,
-} from "@aipexstudio/browser-runtime";
+} from "@eterna/react/components/ui/dropdown-menu";
+import { useTranslation } from "@eterna/react/i18n/context";
+import { cn } from "@eterna/react/lib/utils";
 import {
   ClockIcon,
   MessageSquareIcon,

@@ -37,15 +37,6 @@ export const AI_PROVIDERS = {
     docs: "https://chatgpt.com/codex",
     providerType: "openai",
   },
-  catgptGateway: {
-    name: "Web Sessions (Local Gateway)",
-    icon: "🐱",
-    host: "http://localhost:8000/v1",
-    models: ["catgpt-browser", "claude-browser"] as const,
-    tokenPlaceholder: "",
-    docs: "https://github.com/GautamVhavle/CatGPT-Gateway",
-    providerType: "openai",
-  },
   anthropic: {
     name: "Anthropic",
     icon: "🧠",

@@ -1,4 +1,6 @@
 import { zenfs } from "../../../lib/vm/zenfs-manager";
+// Import Grammar Correct skill
+import grammarCorrectMarkdown from "../../built-in/grammar-correct/SKILL.md?raw";
 import licenseText from "../../built-in/skill-creator-browser/LICENSE.txt?raw";
 // Import built-in skill content files
 import skillCreatorMarkdown from "../../built-in/skill-creator-browser/SKILL.md?raw";
@@ -34,6 +36,7 @@ export class SkillManager {
   private config: SkillManagerConfig;
   private loadedSkills: Set<string> = new Set();
   private initialized = false;
+  private initPromise: Promise<void> | null = null;
   private subscribers: Map<SkillEventType, Set<SkillSubscriber>> = new Map();
 
   constructor(config: SkillManagerConfig = {}) {
@@ -87,7 +90,17 @@ export class SkillManager {
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
+    // `initialized` only flips at the very end, so concurrent callers (prompt
+    // assembly calls this from both the skill index and turn-context routing)
+    // would each run the whole body — duplicating the ZenFS scan and every
+    // builtin load. Share the in-flight promise instead.
+    this.initPromise ??= this.runInitialize().finally(() => {
+      this.initPromise = null;
+    });
+    return this.initPromise;
+  }
 
+  private async runInitialize(): Promise<void> {
     try {
       console.log("🔄 Initializing SkillManager...");
 
@@ -95,8 +108,10 @@ export class SkillManager {
       console.log("📦 Initializing skillStorage...");
       await skillStorage.initialize();
 
-      console.log("⚙️ Initializing skillExecutor...");
-      await skillExecutor.initialize();
+      // The executor (QuickJS VM) is NOT initialized here: metadata, content
+      // reads and the prompt skill index never need it, and its WASM load is
+      // the fragile part in the MV3 service worker. It lazily initializes
+      // itself on the first executeScript call.
 
       // Load all skills from storage
       console.log("📋 Loading skills from storage...");
@@ -114,6 +129,10 @@ export class SkillManager {
       // Auto-load wcag22-a11y-audit
       console.log("🔧 Loading built-in wcag22-a11y-audit...");
       await this.loadBuiltinWcag22A11yAudit();
+
+      // Auto-load grammar-correct
+      console.log("🔧 Loading built-in grammar-correct...");
+      await this.loadBuiltinGrammarCorrect();
 
       // Reload skills from storage after creating built-in skills
       console.log("📋 Reloading skills from storage...");
@@ -783,6 +802,43 @@ export class SkillManager {
       console.log("✅ Built-in wcag22-a11y-audit loaded successfully");
     } catch (error) {
       console.error("❌ Failed to load built-in wcag22-a11y-audit:", error);
+    }
+  }
+
+  private async loadBuiltinGrammarCorrect(): Promise<void> {
+    try {
+      const skillName = "grammar-correct";
+      const skillPath = zenfs.getSkillPath(skillName);
+      const skillMdPath = `${skillPath}/SKILL.md`;
+
+      // Built-in content is code-owned: always sync the bundled SKILL.md into
+      // ZenFS when it changed, so shipped skill updates actually reach users
+      // (write-if-missing would pin them to the first installed version).
+      const existing = (await zenfs.exists(skillMdPath))
+        ? String(await zenfs.readFile(skillMdPath, "utf8"))
+        : null;
+      if (existing !== grammarCorrectMarkdown) {
+        await zenfs.mkdir(skillPath, { recursive: true });
+        await zenfs.writeFile(skillMdPath, grammarCorrectMarkdown);
+      }
+
+      const existingMetadata = await skillStorage.getSkillMetadata(skillName);
+      if (!existingMetadata) {
+        const grammarCorrectMetadata: SkillMetadata = {
+          id: skillName,
+          name: skillName,
+          description:
+            "Correct the user's casual English into natural, native-sounding text while keeping their tone and exact meaning, then explain the meaning in Turkish. Use when the user asks to correct/fix/check grammar or English ('correct grammar', 'fix my english', 'düzelt', 'is this correct?') or pastes text with such a request.",
+          version: "1.0.0",
+          uploadedAt: Date.now(),
+          enabled: true,
+        };
+        await skillStorage.saveSkillMetadata(grammarCorrectMetadata);
+      }
+
+      console.log("✅ Built-in grammar-correct loaded successfully");
+    } catch (error) {
+      console.error("❌ Failed to load built-in grammar-correct:", error);
     }
   }
 }

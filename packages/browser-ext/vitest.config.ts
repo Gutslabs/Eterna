@@ -30,24 +30,24 @@ export default defineConfig({
       { find: "~", replacement: path.resolve(__dirname, "./src") },
       { find: "@", replacement: path.resolve(__dirname, "./") },
       {
-        find: "@aipexstudio/aipex-core",
+        find: "@eterna/core",
         replacement: path.resolve(__dirname, "../core/src/index.ts"),
       },
       {
-        find: /^@aipexstudio\/browser-runtime\/(.*)$/,
+        find: /^@eterna\/browser-runtime\/(.*)$/,
         replacement: path.resolve(__dirname, "../browser-runtime/src/$1"),
       },
       {
-        find: "@aipexstudio/browser-runtime",
+        find: "@eterna/browser-runtime",
         replacement: path.resolve(__dirname, "../browser-runtime/src/index.ts"),
       },
       {
-        find: /^@aipexstudio\/aipex-react\/(.*)$/,
-        replacement: path.resolve(__dirname, "../aipex-react/src/$1"),
+        find: /^@eterna\/react\/(.*)$/,
+        replacement: path.resolve(__dirname, "../eterna-react/src/$1"),
       },
       {
-        find: "@aipexstudio/aipex-react",
-        replacement: path.resolve(__dirname, "../aipex-react/src/index.ts"),
+        find: "@eterna/react",
+        replacement: path.resolve(__dirname, "../eterna-react/src/index.ts"),
       },
     ],
   },

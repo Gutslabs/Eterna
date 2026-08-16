@@ -1,4 +1,4 @@
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
 import { executeComputerAction } from "../automation/computer";
 import { getAutomationMode } from "../runtime/automation-mode";

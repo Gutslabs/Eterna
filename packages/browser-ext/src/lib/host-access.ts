@@ -3,8 +3,8 @@
  * Controls which hosts the extension can interact with
  */
 
-import { STORAGE_KEYS } from "@aipexstudio/aipex-core";
-import { ChromeStorageAdapter } from "@aipexstudio/browser-runtime";
+import { ChromeStorageAdapter } from "@eterna/browser-runtime";
+import { STORAGE_KEYS } from "@eterna/core";
 
 export type HostAccessMode = "whitelist" | "blocklist" | "include-all";
 

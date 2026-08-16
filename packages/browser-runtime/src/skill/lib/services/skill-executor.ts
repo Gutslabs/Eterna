@@ -2,6 +2,7 @@ import { autoMigrate } from "../../../lib/vm/migration";
 import { quickjs } from "../../../lib/vm/quickjs-manager";
 import { createSkillAPIBridge } from "../../../lib/vm/skill-api";
 import { zenfs } from "../../../lib/vm/zenfs-manager";
+import { skillStorage } from "../storage/skill-storage";
 
 type ToolDefinition = {
   name: string;
@@ -59,8 +60,8 @@ export class SkillExecutor {
         `🚀 [SkillExecutor] Executing script: ${skillName}/${scriptPath}`,
       );
 
-      // Get skill metadata to find skill ID
-      const { skillStorage } = await import("../storage/skill-storage");
+      // Get skill metadata to find skill ID (static import — MV3 SW forbids
+      // dynamic import()).
       const skills = await skillStorage.listSkills();
       const skill = skills.find((s) => s.name === skillName);
 

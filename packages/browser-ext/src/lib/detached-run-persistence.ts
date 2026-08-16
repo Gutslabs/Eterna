@@ -1,8 +1,8 @@
-import { ChatAdapter } from "@aipexstudio/aipex-react/adapters/chat-adapter";
 import type {
   ConversationData,
   UIMessage as StoredMessage,
-} from "@aipexstudio/browser-runtime";
+} from "@eterna/browser-runtime";
+import { ChatAdapter } from "@eterna/react/adapters/chat-adapter";
 import type { RunSnapshot } from "./chat-port-protocol";
 import { deserializeAgentEvent } from "./chat-port-protocol";
 import { fromStorageFormat, toStorageFormat } from "./message-adapter";

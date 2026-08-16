@@ -110,15 +110,15 @@ async function checkTabValid(tabId: number): Promise<boolean> {
   if (!tabId || typeof tabId !== "number") {
     return false;
   }
-  const tabs = await chrome.tabs.query({});
-  if (!tabs || tabs.length === 0) {
+  // Direct lookup instead of enumerating every tab in every window — this runs
+  // twice per click/fill (and once per field in fill_form), and a full query
+  // serializes url/title/favIconUrl for all open tabs each time.
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return Boolean(tab);
+  } catch {
     return false;
   }
-  const tab = tabs.find((tab) => tab.id === tabId);
-  if (!tab) {
-    return false;
-  }
-  return true;
 }
 
 /**

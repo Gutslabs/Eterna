@@ -14,7 +14,7 @@ import { snapshotManager } from "./snapshot-manager";
 import type { TextSnapshotNode } from "./types";
 
 /**
- * DOM snapshot node structure from @aipexstudio/dom-snapshot
+ * DOM snapshot node structure from @eterna/dom-snapshot
  */
 export interface DomSnapshotNode {
   id: string;
@@ -38,7 +38,7 @@ export interface DomSnapshotNode {
 }
 
 /**
- * DOM snapshot result from @aipexstudio/dom-snapshot
+ * DOM snapshot result from @eterna/dom-snapshot
  */
 export interface SerializedDomSnapshot {
   root: DomSnapshotNode;
@@ -56,7 +56,7 @@ export interface SerializedDomSnapshot {
 /**
  * Message protocol for DOM snapshot collection
  */
-export const DOM_SNAPSHOT_MESSAGE = "aipex:collect-dom-snapshot";
+export const DOM_SNAPSHOT_MESSAGE = "eterna:collect-dom-snapshot";
 
 export interface DomSnapshotMessageRequest {
   type: typeof DOM_SNAPSHOT_MESSAGE;
@@ -86,14 +86,19 @@ const domSnapshotCache = new Map<number, UnifiedSnapshot>();
 /**
  * Convert DOM snapshot node to TextSnapshotNode format
  */
-function convertDomNodeToTextNode(node: DomSnapshotNode): TextSnapshotNode {
+function convertDomNodeToTextNode(
+  node: DomSnapshotNode,
+  index?: Map<string, TextSnapshotNode>,
+): TextSnapshotNode {
   const textNode: TextSnapshotNode = {
     id: node.id,
     role: node.role,
     name: node.name || "",
     value: node.value,
     description: node.description,
-    children: node.children.map(convertDomNodeToTextNode),
+    children: node.children.map((child) =>
+      convertDomNodeToTextNode(child, index),
+    ),
     tagName: node.tagName,
     focused: node.focused,
     disabled: node.disabled,
@@ -108,6 +113,10 @@ function convertDomNodeToTextNode(node: DomSnapshotNode): TextSnapshotNode {
   if (node.href) (textNode as any).href = node.href;
   if (node.title) (textNode as any).title = node.title;
 
+  if (index && node.id) {
+    index.set(node.id, textNode);
+  }
+
   return textNode;
 }
 
@@ -118,12 +127,18 @@ function convertDomSnapshotToUnified(
   domSnapshot: SerializedDomSnapshot,
   tabId: number,
 ): UnifiedSnapshot {
-  const root = convertDomNodeToTextNode(domSnapshot.root);
+  // The index is filled during the single tree walk. Converting each entry of
+  // the flat map separately re-cloned every node's whole subtree (O(n·depth))
+  // and produced index nodes that were NOT the ones reachable from root.
   const idToNode = new Map<string, TextSnapshotNode>();
+  const root = convertDomNodeToTextNode(domSnapshot.root, idToNode);
 
-  // Build idToNode map from flat map
+  // Any id present in the flat map but not reachable from root (detached
+  // frame content) still needs an entry.
   for (const [uid, node] of Object.entries(domSnapshot.idToNode)) {
-    idToNode.set(uid, convertDomNodeToTextNode(node));
+    if (!idToNode.has(uid)) {
+      idToNode.set(uid, convertDomNodeToTextNode(node, idToNode));
+    }
   }
 
   return {

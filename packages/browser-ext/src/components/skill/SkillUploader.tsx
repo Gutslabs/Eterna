@@ -1,15 +1,12 @@
-import {
-  Alert,
-  AlertDescription,
-} from "@aipexstudio/aipex-react/components/ui/alert";
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import { Alert, AlertDescription } from "@eterna/react/components/ui/alert";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@aipexstudio/aipex-react/components/ui/card";
+} from "@eterna/react/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -17,8 +14,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aipexstudio/aipex-react/components/ui/dialog";
-import { Progress } from "@aipexstudio/aipex-react/components/ui/progress";
+} from "@eterna/react/components/ui/dialog";
+import { Progress } from "@eterna/react/components/ui/progress";
 import { AlertCircle, CheckCircle, FileArchive, Upload } from "lucide-react";
 import type React from "react";
 import { useCallback, useRef, useState } from "react";

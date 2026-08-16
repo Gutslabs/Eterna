@@ -1,13 +1,18 @@
 import { CdpCommander } from "./cdp-commander";
 import { debuggerManager } from "./debugger-manager";
+import {
+  addHighlightToElement,
+  quadToRect,
+  type Rect,
+  removeHighlightFromElement,
+  unionRects,
+} from "./smart-locator-support";
 import type { ElementHandle, Locator, TextSnapshotNode } from "./types";
 
 type FrameTreeNode = {
   frame: { id: string };
   childFrames?: FrameTreeNode[];
 };
-
-type Rect = { x: number; y: number; width: number; height: number };
 
 // Smart Locator implementation that uses node information to find elements
 export class SmartLocator implements Locator {
@@ -206,8 +211,8 @@ export class SmartLocator implements Locator {
                 transition: el.style.transition,
               };
 
-              if (!el.hasAttribute('data-aipex-highlighted')) {
-                el.setAttribute('data-aipex-highlighted', 'true');
+              if (!el.hasAttribute('data-eterna-highlighted')) {
+                el.setAttribute('data-eterna-highlighted', 'true');
                 el.style.outline = '3px solid #3b82f6';
                 el.style.outlineOffset = '2px';
                 el.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.2), 0 0 20px rgba(59, 130, 246, 0.4)';
@@ -215,7 +220,7 @@ export class SmartLocator implements Locator {
 
                 if (!isDev) {
                   setTimeout(() => {
-                    el.removeAttribute('data-aipex-highlighted');
+                    el.removeAttribute('data-eterna-highlighted');
                     el.style.outline = originalStyles.outline;
                     el.style.outlineOffset = originalStyles.outlineOffset;
                     el.style.boxShadow = originalStyles.boxShadow;
@@ -301,46 +306,6 @@ export class SmartLocator implements Locator {
     }
   }
 
-  private quadToRect(quad: number[]): Rect | null {
-    if (!Array.isArray(quad) || quad.length < 8) {
-      return null;
-    }
-    let minX = Number.POSITIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    for (let i = 0; i < 8; i += 2) {
-      const x = quad[i];
-      const y = quad[i + 1];
-      if (typeof x !== "number" || typeof y !== "number") continue;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
-    if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
-      return null;
-    }
-    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-  }
-
-  private unionRects(rects: Rect[]): Rect | null {
-    if (rects.length === 0) {
-      return null;
-    }
-    let minX = Number.POSITIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    for (const r of rects) {
-      minX = Math.min(minX, r.x);
-      minY = Math.min(minY, r.y);
-      maxX = Math.max(maxX, r.x + r.width);
-      maxY = Math.max(maxY, r.y + r.height);
-    }
-    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-  }
-
   private async getBackendNodeContentRect(
     backendNodeId: number,
   ): Promise<Rect | null> {
@@ -351,9 +316,9 @@ export class SmartLocator implements Locator {
 
       const quads = quadsResult?.quads || [];
       const rects = quads
-        .map((quad) => this.quadToRect(quad))
+        .map((quad) => quadToRect(quad))
         .filter((r): r is Rect => Boolean(r));
-      const quadRect = this.unionRects(rects);
+      const quadRect = unionRects(rects);
       if (quadRect) {
         return quadRect;
       }
@@ -367,7 +332,7 @@ export class SmartLocator implements Locator {
       }>("DOM.getBoxModel", { backendNodeId });
       const contentQuad = boxResult?.model?.content;
       if (contentQuad) {
-        return this.quadToRect(contentQuad);
+        return quadToRect(contentQuad);
       }
       return null;
     } catch {
@@ -714,70 +679,6 @@ export class SmartLocator implements Locator {
   }
 
   /**
-   * Add highlight to element during operation
-   */
-  private async addHighlightToElement(objectId: string): Promise<void> {
-    try {
-      await this.#cdpCommander.sendCommand("Runtime.callFunctionOn", {
-        objectId,
-        functionDeclaration: `function() {
-          // Find editor container (Monaco or the element itself)
-          const container = this.closest('.monaco-editor') || this;
-
-          // Store original styles
-          if (!container._aipexOriginalStyles) {
-            container._aipexOriginalStyles = {
-              outline: container.style.outline,
-              outlineOffset: container.style.outlineOffset,
-              transition: container.style.transition
-            };
-          }
-
-          // Add highlight effect
-          container.style.transition = 'outline 0.2s ease';
-          container.style.outline = '3px solid #3B82F6';
-          container.style.outlineOffset = '2px';
-        }`,
-        returnByValue: false,
-      });
-    } catch (error) {
-      console.warn("Failed to add highlight:", error);
-    }
-  }
-
-  /**
-   * Remove highlight from element
-   */
-  private async removeHighlightFromElement(objectId: string): Promise<void> {
-    try {
-      await this.#cdpCommander.sendCommand("Runtime.callFunctionOn", {
-        objectId,
-        functionDeclaration: `function() {
-          const container = this.closest('.monaco-editor') || this;
-
-          // Restore original styles
-          if (container._aipexOriginalStyles) {
-            container.style.outline = container._aipexOriginalStyles.outline;
-            container.style.outlineOffset = container._aipexOriginalStyles.outlineOffset;
-            container.style.transition = container._aipexOriginalStyles.transition;
-            delete container._aipexOriginalStyles;
-          }
-        }`,
-        returnByValue: false,
-      });
-
-      // Schedule cleanup after animation
-      setTimeout(() => {
-        this.#cdpCommander
-          .sendCommand("Runtime.releaseObject", { objectId })
-          .catch(() => {});
-      }, 300);
-    } catch (error) {
-      console.warn("Failed to remove highlight:", error);
-    }
-  }
-
-  /**
    * Try to fill Monaco Editor using native API
    */
   private async tryFillMonaco(
@@ -956,7 +857,7 @@ export class SmartLocator implements Locator {
 
       // Step 2: Add visual highlight
       console.log("✨ [SmartLocator] Adding highlight effect...");
-      await this.addHighlightToElement(objectId!);
+      await addHighlightToElement(this.#cdpCommander, objectId!);
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Step 3: Try Monaco Editor native API first
@@ -967,7 +868,7 @@ export class SmartLocator implements Locator {
         console.log("✅ [SmartLocator] Monaco fill successful!");
         await new Promise((resolve) => setTimeout(resolve, 500));
         console.log("🧹 [SmartLocator] Removing highlight...");
-        await this.removeHighlightFromElement(objectId!);
+        await removeHighlightFromElement(this.#cdpCommander, objectId!);
         return { success: true };
       }
 
@@ -981,7 +882,7 @@ export class SmartLocator implements Locator {
       console.log("✅ [SmartLocator] Universal fill successful!");
       await new Promise((resolve) => setTimeout(resolve, 500));
       console.log("🧹 [SmartLocator] Removing highlight...");
-      await this.removeHighlightFromElement(objectId!);
+      await removeHighlightFromElement(this.#cdpCommander, objectId!);
 
       return { success: true };
     } catch (error) {
@@ -989,7 +890,9 @@ export class SmartLocator implements Locator {
 
       // Try to remove highlight even on error
       if (objectId) {
-        await this.removeHighlightFromElement(objectId).catch(() => {});
+        await removeHighlightFromElement(this.#cdpCommander, objectId).catch(
+          () => {},
+        );
       }
 
       return {

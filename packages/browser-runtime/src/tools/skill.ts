@@ -1,20 +1,161 @@
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
+// STATIC imports on purpose: these tools execute in the background service
+// worker, and MV3 forbids dynamic import() there — the previous lazy-loading
+// made every skill tool (and the prompt skill index) fail at runtime with
+// "import() is disallowed". The QuickJS/ZenFS weight now rides the SW bundle;
+// that is the price of the skill system actually working.
+import { skillManager } from "../skill/lib/services/skill-manager";
+import { getSkillInfo } from "../skill/mcp-servers/skills";
 
-// The skill runtime drags in the QuickJS VM, the ZenFS virtual filesystem, and
-// the inlined built-in SKILL.md sources (~450-500KB). Only a handful of agent
-// runs ever touch a skill tool, so load that implementation lazily on first
-// use — module caching keeps the singletons, so behavior is unchanged. Keeping
-// only the tool definitions (name/params) eager keeps the sidepanel bundle slim.
-const loadSkillManager = async () => {
-  const { skillManager } = await import("../skill/lib/services/skill-manager");
-  return skillManager;
-};
+const loadSkillManager = async () => skillManager;
 
-const loadGetSkillInfo = async () => {
-  const { getSkillInfo } = await import("../skill/mcp-servers/skills");
-  return getSkillInfo;
-};
+const loadGetSkillInfo = async () => getSkillInfo;
+
+/**
+ * Full description, capped. The trigger phrases ("Use when …") usually live
+ * past the first sentence, so no sentence-cutting — the triggers ARE the
+ * router.
+ */
+function skillIndexLine(description: string): string {
+  const line = description.trim();
+  return line.length > 320 ? `${line.slice(0, 320)}…` : line;
+}
+
+/**
+ * One line per enabled skill. This is the agent-skills routing model: only
+ * this tiny index rides the system prompt; the full SKILL.md body loads on
+ * demand via load_skill when an ask matches.
+ */
+export function renderSkillIndex(
+  skills: Array<{ name: string; description: string; enabled: boolean }>,
+): string {
+  const enabled = skills.filter((skill) => skill.enabled);
+  if (enabled.length === 0) {
+    return "";
+  }
+  return [
+    "=== SKILLS (load on demand) ===",
+    "Installed skills with their triggers. When a request matches a skill's triggers, you MUST call load_skill with its name BEFORE answering, then follow the loaded instructions for that reply — do not answer such requests from your defaults:",
+    ...enabled.map(
+      (skill) => `- ${skill.name}: ${skillIndexLine(skill.description)}`,
+    ),
+  ].join("\n");
+}
+
+const SKILL_INDEX_CACHE_TTL_MS = 60_000;
+let skillIndexCache: { value: string; fetchedAt: number } | null = null;
+
+/**
+ * Skill index for the system prompt, cached so agent rebuilds don't pay the
+ * lazy skill-runtime load on every turn. Soft-fails to "" — a broken skill
+ * system must never break agent builds.
+ */
+export async function renderSkillIndexForPrompt(
+  now = Date.now(),
+): Promise<string> {
+  if (
+    skillIndexCache &&
+    now - skillIndexCache.fetchedAt < SKILL_INDEX_CACHE_TTL_MS
+  ) {
+    return skillIndexCache.value;
+  }
+  let value = "";
+  try {
+    const skillManager = await loadSkillManager();
+    await skillManager.initialize();
+    const skills = skillManager.getAllSkills();
+    value = renderSkillIndex(
+      skills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        enabled: skill.enabled,
+      })),
+    );
+    console.log(
+      `[Eterna] skill index: ${skills.filter((s) => s.enabled).length}/${skills.length} enabled, ${value.length} chars`,
+    );
+  } catch (error) {
+    console.error("[Eterna] skill index failed; prompt gets none:", error);
+    value = "";
+  }
+  skillIndexCache = { value, fetchedAt: now };
+  return value;
+}
+
+/** Test hook. */
+export function resetSkillIndexCache(): void {
+  skillIndexCache = null;
+}
+
+/**
+ * Deterministic skill routing: when the user's ask matches a trigger, the
+ * skill's full SKILL.md is attached to THAT turn as a context block — the
+ * model doesn't have to decide to call load_skill (strong models routinely
+ * shortcut "simple" asks and skip the tool), and there is no extra tool
+ * round-trip. The prompt index stays as discovery for unusual phrasings.
+ */
+export const SKILL_TURN_TRIGGERS: Array<{ name: string; pattern: RegExp }> = [
+  {
+    name: "grammar-correct",
+    pattern:
+      /\b(correct|fix|check)\s+(my\s+|the\s+|this\s+)?(grammar|english)\b|\bgrammar\s*(check|fix|correct(ion)?)\b|\b(make|sound)\s+(it|this)?\s*(more\s+)?native\b|\bis\s+(this|my)\s+(english\s+)?correct\b|ingilizce(mi|yi|sini)?\s+düzelt|grammar\s*düzelt/i,
+  },
+];
+
+export interface SkillTurnContext {
+  id: string;
+  type: "custom";
+  label: string;
+  value: string;
+  metadata: { kind: "skill-instructions"; skill: string };
+}
+
+/** Match the user's ask against skill triggers. Exported for tests. */
+export function matchSkillTriggers(userText: string): string[] {
+  return SKILL_TURN_TRIGGERS.filter(({ pattern }) =>
+    pattern.test(userText),
+  ).map(({ name }) => name);
+}
+
+/**
+ * Context items carrying matched skills' instructions for this turn.
+ * Soft-fails to [] — routing must never block a message.
+ */
+export async function resolveSkillTurnContexts(
+  userText: string,
+): Promise<SkillTurnContext[]> {
+  const matched = matchSkillTriggers(userText);
+  if (matched.length === 0) {
+    return [];
+  }
+  try {
+    await skillManager.initialize();
+    const items: SkillTurnContext[] = [];
+    for (const name of matched) {
+      const content = await skillManager.getSkillContent(name);
+      if (!content) continue;
+      items.push({
+        id: `skill-${name}`,
+        type: "custom",
+        label: `skill: ${name}`,
+        value: [
+          `[Skill activated: ${name} — this request matches its triggers. Apply the instructions below to THIS reply.]`,
+          "",
+          content,
+        ].join("\n"),
+        metadata: { kind: "skill-instructions", skill: name },
+      });
+    }
+    console.log(
+      `[Eterna] skill router: attached ${items.map((i) => i.metadata.skill).join(", ") || "none"}`,
+    );
+    return items;
+  } catch (error) {
+    console.error("[Eterna] skill router failed; turn continues bare:", error);
+    return [];
+  }
+}
 
 export const loadSkillTool = tool({
   name: "load_skill",

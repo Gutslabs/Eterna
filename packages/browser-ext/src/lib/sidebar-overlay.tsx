@@ -1,7 +1,7 @@
 /**
  * In-page sidebar overlay
  *
- * Renders the AIPex chat as a docked panel injected into the host page by the
+ * Renders the Eterna chat as a docked panel injected into the host page by the
  * content script, instead of a separate browser window. The chat itself lives
  * in an <iframe> pointing at the extension's sidepanel.html, so it runs as a
  * full extension page (all chrome.* APIs and browser tools keep working) while
@@ -199,6 +199,19 @@ export function SidebarApp() {
     setMounted(false);
     persist(false);
   }, [inPageEnabled, mounted, persist, restoreRootStyles]);
+
+  // Closing unmounts the iframe once the slide-out finishes. A merely-hidden
+  // sidepanel app would keep its chat port, chrome.tabs listeners and backend
+  // probes running forever in every tab it was ever opened in; the in-flight
+  // turn itself lives in the background host and reattaches on reopen.
+  useEffect(() => {
+    if (!mounted || open) return;
+    const timer = setTimeout(
+      () => setMounted(false),
+      animateRef.current ? 260 : 0,
+    );
+    return () => clearTimeout(timer);
+  }, [open, mounted]);
 
   useEffect(() => () => restoreRootStyles(), [restoreRootStyles]);
 

@@ -9,7 +9,7 @@ import {
   SkillConflictError,
   skillManager,
   zenfs,
-} from "@aipexstudio/browser-runtime";
+} from "@eterna/browser-runtime";
 import type {
   SkillClient,
   SkillDetail,

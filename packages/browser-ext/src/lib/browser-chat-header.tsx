@@ -3,15 +3,12 @@
  * Custom header with conversation persistence and history dropdown
  */
 
-import {
-  useChatContext,
-  useConfigContext,
-} from "@aipexstudio/aipex-react/components/chatbot";
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
-import { useTranslation } from "@aipexstudio/aipex-react/i18n/context";
-import { cn } from "@aipexstudio/aipex-react/lib/utils";
-import type { HeaderProps, UIMessage } from "@aipexstudio/aipex-react/types";
-import { conversationStorage } from "@aipexstudio/browser-runtime";
+import { conversationStorage } from "@eterna/browser-runtime";
+import { useChatContext } from "@eterna/react/components/chatbot";
+import { Button } from "@eterna/react/components/ui/button";
+import { useTranslation } from "@eterna/react/i18n/context";
+import { cn } from "@eterna/react/lib/utils";
+import type { HeaderProps, UIMessage } from "@eterna/react/types";
 import { ExternalLinkIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   lazy,
@@ -52,7 +49,11 @@ function firstUserDomain(messages: readonly unknown[]): string | undefined {
 }
 
 function lastUserMessageId(messages: readonly UIMessage[]): string | undefined {
-  return [...messages].reverse().find((message) => message.role === "user")?.id;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message?.role === "user") return message.id;
+  }
+  return undefined;
 }
 
 /** Quiet-period debounce before persisting the conversation. */
@@ -79,7 +80,6 @@ export function BrowserChatHeader({
     getMessagesSnapshot,
     detachActiveRun,
   } = useChatContext();
-  const { settings } = useConfigContext();
 
   const [currentConversationId, setCurrentConversationId] = useState<
     string | undefined
@@ -137,8 +137,15 @@ export function BrowserChatHeader({
       if (nonSystemMessages.length === 0) return;
 
       const payload = toStorageFormat(messages);
-      const snapshot = JSON.stringify(payload);
-      if (snapshot === lastSavedSnapshotRef.current) return;
+      // The stringify dirty-check exists so merely restoring/viewing a
+      // conversation never writes. While a run is streaming the content has
+      // always changed, so comparing multi-MB snapshots every 2s is pure
+      // waste — skip the check and invalidate the snapshot instead.
+      let snapshot: string | null = null;
+      if (!activeRunId) {
+        snapshot = JSON.stringify(payload);
+        if (snapshot === lastSavedSnapshotRef.current) return;
+      }
       const epoch = navigationEpochRef.current;
       const runId = activeRunId ?? visibleRunIdRef.current;
 
@@ -171,6 +178,8 @@ export function BrowserChatHeader({
           lastUserMessageId(messages),
         );
         if (navigationEpochRef.current === epoch) {
+          // Streaming saves store null here; the first post-turn save
+          // recomputes and re-seeds the snapshot.
           lastSavedSnapshotRef.current = snapshot;
           if (!currentConversationId) {
             setCurrentConversationId(persistedConversationId);
@@ -401,8 +410,6 @@ export function BrowserChatHeader({
       }
       visibleRunIdRef.current = null;
       reset({ preserveActiveRun: preservedRun });
-      const remote = getRemoteBrowserAgent();
-      remote.activateGatewayConversation(conversationId);
 
       // Set the current conversation ID first
       setCurrentConversationId(conversationId);
@@ -414,7 +421,8 @@ export function BrowserChatHeader({
       lastSavedSnapshotRef.current = JSON.stringify(toStorageFormat(restored));
       setMessages(restored);
 
-      const attachment = await remote.attachActiveRun(conversationId);
+      const attachment =
+        await getRemoteBrowserAgent().attachActiveRun(conversationId);
       if (navigationEpochRef.current !== navigationEpoch) {
         attachment?.detach();
         return;
@@ -461,14 +469,6 @@ export function BrowserChatHeader({
     setCurrentConversationId(undefined);
     lastSavedSnapshotRef.current = null;
 
-    // The next route gets a fresh identity. Avoid an eager remote reset: its
-    // fire-and-forget navigation can race the next send or disrupt old work.
-    void getRemoteBrowserAgent()
-      .freshGatewayThread(settings.aiModel, {
-        resetRemote: false,
-      })
-      .catch(() => {});
-
     // Call the passed onNewChat (resets messages and clears input)
     onNewChat?.({ preserveActiveRun: preservedRun });
   }, [
@@ -476,7 +476,6 @@ export function BrowserChatHeader({
     getMessagesSnapshot,
     onNewChat,
     persistDetachedSnapshot,
-    settings.aiModel,
   ]);
 
   // When rendered inside the in-page sidebar iframe, expose a close affordance

@@ -1,8 +1,8 @@
 import { openai } from "@ai-sdk/openai";
 import {
-  AIPex,
   aisdk,
   ConversationManager,
+  Eterna,
   InMemoryStorage,
   type SerializedSession,
   SessionStorage,
@@ -12,7 +12,7 @@ async function demonstrateMetrics() {
   const storage = new SessionStorage(new InMemoryStorage<SerializedSession>());
   const manager = new ConversationManager(storage);
 
-  const agent = AIPex.create({
+  const agent = Eterna.create({
     name: "MetricsDemo",
     instructions: "You are a helpful assistant that demonstrates metrics.",
     model: aisdk(openai("gpt-4o")),

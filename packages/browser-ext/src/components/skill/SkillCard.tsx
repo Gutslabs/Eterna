@@ -1,13 +1,13 @@
-import { Badge } from "@aipexstudio/aipex-react/components/ui/badge";
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import { Badge } from "@eterna/react/components/ui/badge";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@aipexstudio/aipex-react/components/ui/card";
-import { Switch } from "@aipexstudio/aipex-react/components/ui/switch";
+} from "@eterna/react/components/ui/card";
+import { Switch } from "@eterna/react/components/ui/switch";
 import { Download, Eye, Settings, Trash2 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";

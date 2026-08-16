@@ -3,11 +3,7 @@
  * Provides contexts from all open browser tabs
  */
 
-import type {
-  Context,
-  ContextProvider,
-  ContextQuery,
-} from "@aipexstudio/aipex-core";
+import type { Context, ContextProvider, ContextQuery } from "@eterna/core";
 
 export class TabsProvider implements ContextProvider {
   id = "browser.tabs";

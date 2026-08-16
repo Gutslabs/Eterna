@@ -12,8 +12,8 @@
  * research subagent simply works without LinkedIn rather than failing.
  */
 
-import type { FunctionTool } from "@aipexstudio/aipex-core";
-import { tool } from "@aipexstudio/aipex-core";
+import type { FunctionTool } from "@eterna/core";
+import { tool } from "@eterna/core";
 import { McpHttpClient, type McpToolSchema } from "./mcp-http-client";
 
 export const LINKEDIN_MCP_URL = "http://localhost:8080/mcp";

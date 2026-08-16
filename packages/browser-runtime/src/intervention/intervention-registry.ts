@@ -5,6 +5,9 @@
  * Similar to skill-registry design pattern
  */
 
+import { monitorOperationIntervention } from "./implementations/monitor-operation.js";
+import { userSelectionIntervention } from "./implementations/user-selection.js";
+import { voiceInputIntervention } from "./implementations/voice-input.js";
 import type {
   InterventionImplementation,
   InterventionMetadata,
@@ -36,25 +39,11 @@ export class InterventionRegistry {
 
     console.log("🔧 [InterventionRegistry] Initializing...");
 
-    // Dynamically import intervention implementations
+    // Static imports — MV3 forbids dynamic import() in the service worker.
     try {
-      const { monitorOperationIntervention } = await import(
-        "./implementations/monitor-operation.js"
-      );
       this.register(monitorOperationIntervention);
-      console.log("✅ [InterventionRegistry] Registered monitor-operation");
-
-      const { voiceInputIntervention } = await import(
-        "./implementations/voice-input.js"
-      );
       this.register(voiceInputIntervention);
-      console.log("✅ [InterventionRegistry] Registered voice-input");
-
-      const { userSelectionIntervention } = await import(
-        "./implementations/user-selection.js"
-      );
       this.register(userSelectionIntervention);
-      console.log("✅ [InterventionRegistry] Registered user-selection");
 
       this.initialized = true;
       console.log("✅ [InterventionRegistry] Initialized successfully");

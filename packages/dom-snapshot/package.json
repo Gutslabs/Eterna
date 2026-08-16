@@ -1,5 +1,5 @@
 {
-  "name": "@aipexstudio/dom-snapshot",
+  "name": "@eterna/dom-snapshot",
   "version": "0.1.0",
   "description": "DOM snapshot utility for capturing and serializing web page state",
   "main": "./dist/src/index.js",

@@ -2,10 +2,10 @@
  * Skill UI Adapter Types
  *
  * These interfaces define the contract between UI components and runtime implementations.
- * Types are now sourced from @aipexstudio/browser-runtime.
+ * Types are now sourced from @eterna/browser-runtime.
  */
 
-import type { SkillMetadata } from "@aipexstudio/browser-runtime";
+import type { SkillMetadata } from "@eterna/browser-runtime";
 
 /**
  * Result of a skill upload operation

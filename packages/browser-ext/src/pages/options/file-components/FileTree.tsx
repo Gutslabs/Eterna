@@ -1,4 +1,4 @@
-import type { FileTreeNode } from "@aipexstudio/browser-runtime";
+import type { FileTreeNode } from "@eterna/browser-runtime";
 import type React from "react";
 import { useState } from "react";
 import { FileItem } from "./FileItem";

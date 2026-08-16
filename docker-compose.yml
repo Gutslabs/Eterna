@@ -2,9 +2,9 @@
 #   - linkedin-mcp : stickerdaniel/linkedin-mcp-server over streamable-http (:8080)
 #   - twitter      : the CoinTheHat/twitter-scraper wrapper service (:8088)
 #
-# The model gateways (gpt-web :8000, claude-web :8001) live in the separate
-# CatGPT-Gateway compose, and Gemini/Grok come from the cliproxyapi brew
-# service (:8317) — the `eterna` shell function starts all of them.
+# Models come from the cliproxyapi brew service (:8317), which serves Codex,
+# Claude, Gemini and Grok over subscription OAuth — the `eterna` shell function
+# starts all of them.
 
 services:
   linkedin-mcp:

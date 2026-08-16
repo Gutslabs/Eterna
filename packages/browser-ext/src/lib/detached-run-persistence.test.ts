@@ -1,7 +1,7 @@
 import type {
   ConversationData,
   UIMessage as StoredMessage,
-} from "@aipexstudio/browser-runtime";
+} from "@eterna/browser-runtime";
 import { describe, expect, it, vi } from "vitest";
 import type { RunSnapshot } from "./chat-port-protocol";
 import {

@@ -7,15 +7,15 @@
  * browser-runtime providers into the PromptInput context hooks.
  */
 
+import type { SkillMetadata } from "@eterna/browser-runtime";
+import { prefetchYoutubeTranscript } from "@eterna/browser-runtime/tools/youtube-transcript-chunks";
 import {
   type ContextItem,
   type SkillItem,
   usePromptInputContexts,
   usePromptInputSkills,
-} from "@aipexstudio/aipex-react/components/ai-elements/prompt-input";
-import { useChatContext } from "@aipexstudio/aipex-react/components/chatbot";
-import type { SkillMetadata } from "@aipexstudio/browser-runtime";
-import { prefetchYoutubeTranscript } from "@aipexstudio/browser-runtime/tools/youtube-transcript-chunks";
+} from "@eterna/react/components/ai-elements/prompt-input";
+import { useChatContext } from "@eterna/react/components/chatbot";
 import { useCallback, useEffect, useRef } from "react";
 import { useTabsSync } from "../hooks/use-tabs-sync";
 
@@ -29,6 +29,9 @@ const PENDING_CONTEXT_KEY = "eterna-pending-context";
 // Clean Markdown carries far more signal per char than the old raw-text dump,
 // so a larger budget is still token-reasonable.
 const PAGE_TEXT_LIMIT = 12000;
+// Focus-triggered refreshes skip re-extraction for a page captured this
+// recently; tab/navigation events always re-extract.
+const FOCUS_REFRESH_MIN_MS = 2000;
 
 interface PageMeta {
   title?: string;
@@ -259,65 +262,104 @@ export function BrowserContextLoader() {
   const userClosedUrlRef = useRef<string | null>(null);
   const prevHasPageRef = useRef(false);
   const refreshGenerationRef = useRef(0);
+  // Last completed extraction, so focus events (every click into the panel)
+  // don't re-run the full page extraction for a page just captured.
+  const lastExtractedRef = useRef<{ url: string; at: number } | null>(null);
 
-  const ensurePageContext = useCallback(async (refreshText = false) => {
-    const generation = ++refreshGenerationRef.current;
-    try {
-      // Empty conversation → the welcome card stands in for the page chip.
-      if (!hasConversationRef.current) {
+  const ensurePageContext = useCallback(
+    async (refreshText = false, throttled = false) => {
+      const generation = ++refreshGenerationRef.current;
+      try {
+        // Empty conversation → the welcome card stands in for the page chip.
+        if (!hasConversationRef.current) {
+          removeContextRef.current(CURRENT_PAGE_CONTEXT_ID);
+          return;
+        }
+
+        // Cheap pre-checks on the tab URL alone, so a dismissed chip or a
+        // just-captured page skips the full extraction (DOM clone + IPC +
+        // readability parse) entirely.
+        const tabs = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        const activeTab =
+          tabs.find((t) => /^https?:\/\//.test(t.url ?? "")) ?? tabs[0];
+        const activeUrl = activeTab?.url ?? "";
+        if (/^https?:\/\//.test(activeUrl)) {
+          if (activeUrl !== lastPageUrlRef.current) {
+            lastPageUrlRef.current = activeUrl;
+            userClosedUrlRef.current = null;
+          }
+          if (userClosedUrlRef.current === activeUrl) return;
+          const alreadyPresent = itemsRef.current.some(
+            (i) => i.id === CURRENT_PAGE_CONTEXT_ID,
+          );
+          if (alreadyPresent && !refreshText) return;
+          if (
+            throttled &&
+            alreadyPresent &&
+            lastExtractedRef.current?.url === activeUrl &&
+            Date.now() - lastExtractedRef.current.at < FOCUS_REFRESH_MIN_MS
+          ) {
+            return;
+          }
+        }
+
+        const item = await readActivePageContext();
+        if (typeof item?.metadata?.url === "string") {
+          lastExtractedRef.current = { url: item.metadata.url, at: Date.now() };
+        }
+        if (
+          generation !== refreshGenerationRef.current ||
+          !hasConversationRef.current
+        ) {
+          return;
+        }
+        if (!item) {
+          removeContextRef.current(CURRENT_PAGE_CONTEXT_ID);
+          lastPageUrlRef.current = null;
+          return;
+        }
+        const url = item.metadata?.url as string;
+        // Navigating to a new page clears any previous manual close.
+        if (url !== lastPageUrlRef.current) {
+          lastPageUrlRef.current = url;
+          userClosedUrlRef.current = null;
+        }
+        // Respect a manual close (X) until the user navigates away.
+        if (userClosedUrlRef.current === url) return;
+        // Already attached and no refresh requested → nothing to do.
+        const present = itemsRef.current.some(
+          (i) => i.id === CURRENT_PAGE_CONTEXT_ID,
+        );
+        if (present && !refreshText) return;
+
+        // Only keep secure favicons. An http:// favicon (e.g. a localhost page
+        // like the gateway's noVNC tab) would spam mixed-content warnings when
+        // rendered as <img> on the extension's https-context page.
+        const favicon =
+          typeof item.metadata?.favIconUrl === "string"
+            ? item.metadata.favIconUrl
+            : undefined;
+        const withIcon: ContextItem = {
+          ...item,
+          icon: favicon ? (
+            <img
+              src={favicon}
+              alt=""
+              className="size-4 rounded-sm object-contain"
+            />
+          ) : undefined,
+        };
         removeContextRef.current(CURRENT_PAGE_CONTEXT_ID);
-        return;
+        addContextRef.current(withIcon);
+      } catch {
+        // Tab query may fail on restricted pages; ignore.
       }
-
-      const item = await readActivePageContext();
-      if (
-        generation !== refreshGenerationRef.current ||
-        !hasConversationRef.current
-      ) {
-        return;
-      }
-      if (!item) {
-        removeContextRef.current(CURRENT_PAGE_CONTEXT_ID);
-        lastPageUrlRef.current = null;
-        return;
-      }
-      const url = item.metadata?.url as string;
-      // Navigating to a new page clears any previous manual close.
-      if (url !== lastPageUrlRef.current) {
-        lastPageUrlRef.current = url;
-        userClosedUrlRef.current = null;
-      }
-      // Respect a manual close (X) until the user navigates away.
-      if (userClosedUrlRef.current === url) return;
-      // Already attached and no refresh requested → nothing to do.
-      const present = itemsRef.current.some(
-        (i) => i.id === CURRENT_PAGE_CONTEXT_ID,
-      );
-      if (present && !refreshText) return;
-
-      // Only keep secure favicons. An http:// favicon (e.g. a localhost page
-      // like the gateway's noVNC tab) would spam mixed-content warnings when
-      // rendered as <img> on the extension's https-context page.
-      const favicon =
-        typeof item.metadata?.favIconUrl === "string"
-          ? item.metadata.favIconUrl
-          : undefined;
-      const withIcon: ContextItem = {
-        ...item,
-        icon: favicon ? (
-          <img
-            src={favicon}
-            alt=""
-            className="size-4 rounded-sm object-contain"
-          />
-        ) : undefined,
-      };
-      removeContextRef.current(CURRENT_PAGE_CONTEXT_ID);
-      addContextRef.current(withIcon);
-    } catch {
-      // Tab query may fail on restricted pages; ignore.
-    }
-  }, []);
+    },
+    [],
+  );
 
   // Attach the chip the moment the conversation starts (first user message),
   // and drop it again when the chat resets to the welcome screen.
@@ -350,8 +392,9 @@ export function BrowserContextLoader() {
       }
     };
     // When the user focuses the panel (about to ask), refresh the page text so
-    // it reflects whatever is currently on screen.
-    const onFocus = () => void ensurePageContext(true);
+    // it reflects whatever is currently on screen. Throttled: repeated clicks
+    // into the panel must not re-extract a page captured moments ago.
+    const onFocus = () => void ensurePageContext(true, true);
 
     chrome.tabs.onActivated.addListener(onActivated);
     chrome.tabs.onUpdated.addListener(onUpdated);
@@ -379,7 +422,7 @@ export function BrowserContextLoader() {
     prevHasPageRef.current = hasPage;
   }, [contexts.items]);
 
-  // Pick up text the user selected on the page (via the in-page "Ask AIPex"
+  // Pick up text the user selected on the page (via the in-page "Ask Eterna"
   // button) and attach it as a context chip so it's sent to the AI.
   useEffect(() => {
     const consumePendingSelection = async () => {
@@ -484,7 +527,7 @@ export function BrowserContextLoader() {
 
     const setup = async () => {
       const { skillManager, skillStorage } = await import(
-        "@aipexstudio/browser-runtime/skill"
+        "@eterna/browser-runtime/skill"
       );
       if (cancelled) return;
 

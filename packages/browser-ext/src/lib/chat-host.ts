@@ -8,7 +8,7 @@
  * the service worker.
  */
 
-import type { AgentEvent, ChatOptions } from "@aipexstudio/aipex-core";
+import type { AgentEvent, ChatOptions } from "@eterna/core";
 import {
   type ChatHostInbound,
   type ChatHostOutbound,
@@ -26,7 +26,7 @@ export interface ChatPortLike {
   onDisconnect: { addListener(listener: () => void): void };
 }
 
-/** The agent surface the host needs (AIPex satisfies it structurally). */
+/** The agent surface the host needs (Eterna satisfies it structurally). */
 export interface ChatHostAgent {
   chat(input: string, options?: ChatOptions): AsyncGenerator<AgentEvent>;
   rollbackLastAssistantTurn(sessionId: string): Promise<boolean>;
@@ -39,7 +39,7 @@ export interface ChatHostAgentContext {
   clientId: string;
   runId?: string;
   sessionId?: string;
-  routeId?: string;
+  automationMode?: "focus" | "background";
 }
 
 export interface ChatHostDeps {
@@ -50,14 +50,20 @@ export interface ChatHostDeps {
    * "auto-attach a screenshot to every message" feature.
    */
   captureViewport?(): Promise<string | null>;
-  freshGatewayThread?(
-    model: string | undefined,
-    options?: { resetRemote?: boolean },
-  ): void;
   /** Toggled when a run starts/finishes — drives the SW keepalive. */
   onActiveChange?(active: boolean): void;
   /** Persist a completed run that no UI is currently rendering. */
   onRunComplete?(run: RunSnapshot): void | Promise<void>;
+  /**
+   * Every cleanly finished turn (attached or detached; not interrupted, not
+   * errored). Fire-and-forget — powers conversation auto-capture into memory.
+   */
+  onTurnComplete?(run: RunSnapshot): void;
+  /**
+   * Extra context items to attach to a turn based on its user text —
+   * deterministic skill routing lives here. Failures must not block the turn.
+   */
+  resolveTurnContexts?(userText: string): Promise<unknown[]>;
   /** How long a finished run stays attachable. Default 10 minutes. */
   retentionMs?: number;
   /** Replay buffer cap; overflowing marks the run truncated. Default 5000. */
@@ -67,7 +73,6 @@ export interface ChatHostDeps {
 interface RunState {
   clientId: string;
   runId: string;
-  routeId: string;
   sequence: number;
   userText: string;
   userMessageId: string | null;
@@ -89,6 +94,9 @@ interface RunState {
 
 const DEFAULT_RETENTION_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_BUFFERED_EVENTS = 5000;
+// Streaming delta coalescing window for the port wire. Below the panel's own
+// ~50ms commit throttle, so batching adds no visible latency.
+const DELTA_FLUSH_MS = 30;
 
 export interface ChatHost {
   handlePort(port: ChatPortLike): void;
@@ -105,7 +113,6 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
 
   const runs = new Map<string, RunState>();
   const cleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const sessionRouteIds = new Map<string, string>();
   const ports = new Set<ChatPortLike>();
   const portClients = new Map<ChatPortLike, string>();
   let nextSequence = 0;
@@ -123,8 +130,6 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
 
   const runKey = (clientId: string, runId: string): string =>
     `${clientId}\0${runId}`;
-  const sessionKey = (clientId: string, sessionId: string): string =>
-    `${clientId}\0${sessionId}`;
 
   const retainedRun = (clientId: string, runId: string): RunState | undefined =>
     runs.get(runKey(clientId, runId));
@@ -239,6 +244,9 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       runId: run.runId,
       interrupted: run.interrupted,
     });
+    if (!run.interrupted && !run.error) {
+      deps.onTurnComplete?.(snapshot(run));
+    }
     persistCompletedRun(run);
     activeRunCount = Math.max(0, activeRunCount - 1);
     syncActiveSignal();
@@ -256,12 +264,36 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
   };
 
   const pumpRun = async (run: RunState): Promise<void> => {
+    // Streaming deltas are coalesced before hitting the wire: every token as
+    // its own port message means one structured-clone IPC per token, while the
+    // panel only commits at ~20Hz. Deltas accumulate here and flush at most
+    // every DELTA_FLUSH_MS (immediately when a non-delta event or the end of
+    // the run needs ordering), cutting port traffic 10-50x.
+    let pendingDeltaType: "content_delta" | "reasoning_delta" | null = null;
+    let pendingDeltaText = "";
+    let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flushPendingDelta = (): void => {
+      if (deltaFlushTimer !== null) {
+        clearTimeout(deltaFlushTimer);
+        deltaFlushTimer = null;
+      }
+      if (pendingDeltaType === null) return;
+      const event: WireAgentEvent =
+        pendingDeltaType === "content_delta"
+          ? { type: "content_delta", delta: pendingDeltaText }
+          : { type: "reasoning_delta", delta: pendingDeltaText };
+      pendingDeltaType = null;
+      pendingDeltaText = "";
+      bufferEvent(run, event);
+      broadcast(run, { type: "event", runId: run.runId, event });
+    };
+
     try {
       const agent = await deps.createAgent({
         clientId: run.clientId,
         runId: run.runId,
         sessionId: run.sessionId ?? undefined,
-        routeId: run.routeId,
       });
       if (!isRunnable(run)) return;
       // Auto-attach a fresh viewport screenshot to this turn (when enabled), so
@@ -271,9 +303,18 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
         ? await deps.captureViewport().catch(() => null)
         : null;
       if (!isRunnable(run)) return;
+      const routedContexts = deps.resolveTurnContexts
+        ? await deps.resolveTurnContexts(run.userText).catch(() => [])
+        : [];
+      if (!isRunnable(run)) return;
+      const baseContexts =
+        (run.pendingOptions?.contexts as unknown[] | undefined) ?? [];
+      const mergedContexts = [...baseContexts, ...routedContexts];
       const generator = agent.chat(run.userText, {
         sessionId: run.sessionId ?? undefined,
-        contexts: run.pendingOptions?.contexts as ChatOptions["contexts"],
+        contexts: (mergedContexts.length > 0
+          ? mergedContexts
+          : undefined) as ChatOptions["contexts"],
         images: run.pendingOptions?.images as ChatOptions["images"],
         ambientImage: ambientImage ?? undefined,
       });
@@ -285,16 +326,25 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
           event.type === "session_resumed"
         ) {
           run.sessionId = event.sessionId;
-          sessionRouteIds.set(
-            sessionKey(run.clientId, event.sessionId),
-            run.routeId,
-          );
         }
         const wire = serializeAgentEvent(event);
-        bufferEvent(run, wire);
-        broadcast(run, { type: "event", runId: run.runId, event: wire });
+        if (wire.type === "content_delta" || wire.type === "reasoning_delta") {
+          if (pendingDeltaType !== wire.type) {
+            flushPendingDelta();
+            pendingDeltaType = wire.type;
+          }
+          pendingDeltaText += wire.delta;
+          if (deltaFlushTimer === null) {
+            deltaFlushTimer = setTimeout(flushPendingDelta, DELTA_FLUSH_MS);
+          }
+        } else {
+          flushPendingDelta();
+          bufferEvent(run, wire);
+          broadcast(run, { type: "event", runId: run.runId, event: wire });
+        }
       }
     } catch (error) {
+      flushPendingDelta();
       if (!isRunnable(run)) return;
       run.error = error instanceof Error ? error.message : String(error);
       const wire = serializeAgentEvent({
@@ -304,6 +354,7 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
       bufferEvent(run, wire);
       broadcast(run, { type: "event", runId: run.runId, event: wire });
     } finally {
+      flushPendingDelta();
       finishRun(run);
     }
   };
@@ -333,9 +384,6 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
           const agent = await deps.createAgent({
             clientId: message.clientId,
             sessionId: targetSessionId,
-            routeId: sessionRouteIds.get(
-              sessionKey(message.clientId, targetSessionId),
-            ),
           });
           const result = await agent.rollbackLastAssistantTurn(targetSessionId);
           reply(true, result);
@@ -346,34 +394,8 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
           const agent = await deps.createAgent({
             clientId: message.clientId,
             sessionId: targetSessionId,
-            routeId: sessionRouteIds.get(
-              sessionKey(message.clientId, targetSessionId),
-            ),
           });
           await agent.getConversationManager()?.deleteSession(targetSessionId);
-          sessionRouteIds.delete(sessionKey(message.clientId, targetSessionId));
-          reply(true);
-          return;
-        }
-        case "fresh_gateway_thread": {
-          const hasActiveRun = Array.from(runs.values()).some(
-            (run) => !run.done,
-          );
-          const resetRemote = message.args.resetRemote !== false;
-          deps.freshGatewayThread?.(
-            typeof message.args.model === "string"
-              ? message.args.model
-              : undefined,
-            { resetRemote: resetRemote && !hasActiveRun },
-          );
-          if (hasActiveRun && resetRemote) {
-            reply(
-              false,
-              undefined,
-              "A response is still running in the background.",
-            );
-            return;
-          }
           reply(true);
           return;
         }
@@ -414,14 +436,6 @@ export function createChatHost(deps: ChatHostDeps): ChatHost {
         const run: RunState = {
           clientId: message.clientId,
           runId: message.runId,
-          routeId:
-            message.options.routeId ??
-            (message.options.sessionId
-              ? sessionRouteIds.get(
-                  sessionKey(message.clientId, message.options.sessionId),
-                )
-              : undefined) ??
-            `${message.clientId}:${message.runId}`,
           sequence: ++nextSequence,
           userText: message.text,
           userMessageId: null,

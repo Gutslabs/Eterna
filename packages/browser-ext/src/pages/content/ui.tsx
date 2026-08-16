@@ -8,8 +8,8 @@
  * React or any UI code.
  */
 
-import { FakeMouse } from "@aipexstudio/aipex-react/components/fake-mouse";
-import type { FakeMouseController } from "@aipexstudio/aipex-react/components/fake-mouse/types";
+import { FakeMouse } from "@eterna/react/components/fake-mouse";
+import type { FakeMouseController } from "@eterna/react/components/fake-mouse/types";
 import React from "react";
 import ReactDOM, { type Root } from "react-dom/client";
 import { SelectionAction } from "../../lib/selection-action";
@@ -97,13 +97,13 @@ const ContentApp = () => (
 let mountRequested = false;
 
 type ReactRootContainer = HTMLElement & {
-  __aipexReactRoot?: Root;
+  __eternaReactRoot?: Root;
 };
 
 function removeReactRoot(id: string, restorePageShift = false): void {
   const existing = document.getElementById(id) as ReactRootContainer | null;
   if (!existing) return;
-  const reactRoot = existing.__aipexReactRoot;
+  const reactRoot = existing.__eternaReactRoot;
   let needsLegacyRestore = reactRoot === undefined;
   if (reactRoot) {
     try {
@@ -151,7 +151,7 @@ function mount() {
   shadowRoot.appendChild(style);
 
   const contentRoot = ReactDOM.createRoot(shadowContainer);
-  (container as ReactRootContainer).__aipexReactRoot = contentRoot;
+  (container as ReactRootContainer).__eternaReactRoot = contentRoot;
   contentRoot.render(
     <React.StrictMode>
       <ContentApp />
@@ -170,7 +170,7 @@ function mount() {
     sidebarShadow.appendChild(sidebarMount);
 
     const sidebarRoot = ReactDOM.createRoot(sidebarMount);
-    (sidebarContainer as ReactRootContainer).__aipexReactRoot = sidebarRoot;
+    (sidebarContainer as ReactRootContainer).__eternaReactRoot = sidebarRoot;
     sidebarRoot.render(
       <React.StrictMode>
         <SidebarApp />

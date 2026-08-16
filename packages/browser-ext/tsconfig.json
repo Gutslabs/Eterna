@@ -3,12 +3,23 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "lib": ["esnext", "dom", "dom.iterable"],
-    "types": ["node", "chrome"]
+    "types": ["node", "chrome"],
+    "paths": {
+      "@/*": ["./packages/browser-ext/src/*"],
+      "@eterna/core": ["./packages/core/src"],
+      "@eterna/core/*": ["./packages/core/src/*"],
+      "@eterna/react": ["./packages/eterna-react/src"],
+      "@eterna/react/*": ["./packages/eterna-react/src/*"],
+      "@eterna/browser-runtime": ["./packages/browser-runtime/src"],
+      "@eterna/browser-runtime/*": ["./packages/browser-runtime/src/*"],
+      "@eterna/dom-snapshot": ["./packages/dom-snapshot/src"],
+      "@eterna/dom-snapshot/*": ["./packages/dom-snapshot/src/*"]
+    }
   },
   "include": ["src/**/*", "vite.config.ts", "manifest.json"],
   "references": [
     {
-      "path": "../aipex-react/tsconfig.json"
+      "path": "../eterna-react/tsconfig.json"
     },
     {
       "path": "../browser-runtime/tsconfig.json"

@@ -1,4 +1,4 @@
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aipexstudio/aipex-react/components/ui/dialog";
+} from "@eterna/react/components/ui/dialog";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
 

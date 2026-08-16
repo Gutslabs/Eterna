@@ -12,7 +12,7 @@
   "scripts": {
     "postinstall": "prek install",
     "build": "pnpm -r --if-present build",
-    "dev": "pnpm --filter @aipexstudio/cool-aipex dev",
+    "dev": "pnpm --filter @eterna/browser-ext dev",
     "preflight": "npm run format && npm run lint:fix && npm run lint:dependencies && npm run audit:prod && npm run typecheck && npm run test && npm run build",
     "format": "biome format . --write",
     "format:check": "biome format .",

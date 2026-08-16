@@ -8,13 +8,13 @@
  * text. Falls back to the default welcome on restricted pages.
  */
 
-import { useChatContext } from "@aipexstudio/aipex-react/components/chatbot";
-import { DefaultWelcomeScreen } from "@aipexstudio/aipex-react/components/chatbot/components";
-import { useTranslation } from "@aipexstudio/aipex-react/i18n/context";
-import { cn } from "@aipexstudio/aipex-react/lib/utils";
-import type { WelcomeScreenProps } from "@aipexstudio/aipex-react/types";
-import { ChevronRightIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useChatContext } from "@eterna/react/components/chatbot";
+import { DefaultWelcomeScreen } from "@eterna/react/components/chatbot/components";
+import { useTranslation } from "@eterna/react/i18n/context";
+import { cn } from "@eterna/react/lib/utils";
+import type { WelcomeScreenProps } from "@eterna/react/types";
+import { ChevronRightIcon, XIcon } from "lucide-react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { getPageText, readActivePageContext } from "./browser-context-loader";
 import {
   buildPageBrief,
@@ -22,6 +22,12 @@ import {
   countWords,
   type PageBrief,
 } from "./page-brief";
+import {
+  dismissPageContext,
+  getDismissedPageUrl,
+  restorePageContext,
+  subscribePageContextOptOut,
+} from "./page-context-optout";
 import { runYoutubeTranscriptQueue } from "./youtube-transcript-feed";
 
 const ACCENT_OK = "#7fae8e";
@@ -198,7 +204,13 @@ function ScanStatusLine({
   );
 }
 
-function PageBriefCard({ page }: { page: ScannedPage }) {
+function PageBriefCard({
+  page,
+  onDismiss,
+}: {
+  page: ScannedPage;
+  onDismiss: () => void;
+}) {
   const { t } = useTranslation();
   const { brief } = page;
 
@@ -222,7 +234,7 @@ function PageBriefCard({ page }: { page: ScannedPage }) {
             </span>
           )}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate font-semibold text-[13px] text-foreground">
             {page.title}
           </div>
@@ -230,10 +242,37 @@ function PageBriefCard({ page }: { page: ScannedPage }) {
             {subtitle}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label={t("pageBrief.dismiss")}
+          title={t("pageBrief.dismiss")}
+          className="-mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <XIcon className="size-3.5" />
+        </button>
       </div>
       <p className="m-0 text-[12.5px] text-muted-foreground leading-[1.55]">
         {body}
       </p>
+    </div>
+  );
+}
+
+function PageContextOffNotice({ onRestore }: { onRestore: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-2 rounded-[13px] border border-border border-dashed px-3.5 py-2.5">
+      <span className="min-w-0 flex-1 text-[12px] text-muted-foreground">
+        {t("pageBrief.contextOff")}
+      </span>
+      <button
+        type="button"
+        onClick={onRestore}
+        className="shrink-0 text-[12px] text-foreground/80 underline-offset-2 transition-colors hover:text-foreground hover:underline"
+      >
+        {t("pageBrief.contextOffUndo")}
+      </button>
     </div>
   );
 }
@@ -284,6 +323,12 @@ export function BrowserWelcomeScreen({
   const { t } = useTranslation();
   const scan = useScannedPage();
   const { sendMessage } = useChatContext();
+  const dismissedUrl = useSyncExternalStore(
+    subscribePageContextOptOut,
+    getDismissedPageUrl,
+  );
+  const pageDismissed =
+    scan.status === "done" && dismissedUrl === scan.page.url;
 
   // The page-specific prompts are deictic ("Summarize THIS video") — they
   // must carry the page context (and transcript chunk) themselves. The plain
@@ -331,8 +376,20 @@ export function BrowserWelcomeScreen({
             scanMs={scan.page.scanMs}
             scanning={false}
           />
-          <PageBriefCard page={scan.page} />
-          <SuggestionRows page={scan.page} onSuggestionClick={sendSuggestion} />
+          {pageDismissed ? (
+            <PageContextOffNotice onRestore={restorePageContext} />
+          ) : (
+            <>
+              <PageBriefCard
+                page={scan.page}
+                onDismiss={() => dismissPageContext(scan.page.url)}
+              />
+              <SuggestionRows
+                page={scan.page}
+                onSuggestionClick={sendSuggestion}
+              />
+            </>
+          )}
           <div className="flex items-center gap-2 px-0.5 text-[11.5px] text-muted-foreground/60">
             <span>{t("pageBrief.general")}</span>
             <button

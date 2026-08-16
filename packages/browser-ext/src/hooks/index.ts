@@ -3,6 +3,11 @@
  * Safe to import from any context (background, content, React components)
  */
 
+// Re-export storage adapter (no React dependency)
+export {
+  ChromeStorageAdapter,
+  chromeStorageAdapter,
+} from "@eterna/browser-runtime";
 // Re-export types only (no runtime React dependency)
 export type {
   ChatbotEventHandlers,
@@ -13,16 +18,11 @@ export type {
   UseChatConfigReturn,
   UseChatOptions,
   UseChatReturn,
-} from "@aipexstudio/aipex-react";
-// Re-export storage adapter (no React dependency)
-export {
-  ChromeStorageAdapter,
-  chromeStorageAdapter,
-} from "@aipexstudio/browser-runtime";
+} from "@eterna/react";
 
 /**
  * React hooks should be imported directly from their sources:
- * - useAgent, useChat, useChatConfig, useTheme from "@aipexstudio/aipex-react"
- * - useStorage from "@aipexstudio/browser-runtime/hooks"
+ * - useAgent, useChat, useChatConfig, useTheme from "@eterna/react"
+ * - useStorage from "@eterna/browser-runtime/hooks"
  * - useTabsSync from "./use-tabs-sync.js"
  */

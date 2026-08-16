@@ -8,7 +8,7 @@
  * research subagent just notes "no Twitter data" and moves on.
  */
 
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
 
 /** Default URL of the local Twitter service (see services/twitter-service). */

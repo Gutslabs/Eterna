@@ -1,4 +1,4 @@
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
 import { type ElementHandle, SmartElementHandle } from "../automation";
 import { DomElementHandle } from "../automation/dom-element-handle";
@@ -53,7 +53,7 @@ async function getElementByUid(
 export const clickTool = tool({
   name: "click",
   description:
-    "Click an element by its uid. The uid MUST come from the most recent search_elements (or take_snapshot) on this tab — uids go stale when the page changes, so if the element isn't found, call search_elements again for fresh uids. Prefer this over the coordinate-based computer tool when the element is in a snapshot.",
+    "Click an element by its uid. The uid MUST come from the most recent search_elements on this tab — uids go stale when the page changes, so if the element isn't found, call search_elements again for fresh uids. Prefer this over the coordinate-based computer tool whenever you have the element's uid.",
   parameters: z.object({
     tabId: z.number().describe("The ID of the tab to click on"),
     uid: z
@@ -93,7 +93,7 @@ export const clickTool = tool({
 export const fillElementByUidTool = tool({
   name: "fill_element_by_uid",
   description:
-    "Fill an input element by its uid. The uid MUST come from the most recent search_elements (or take_snapshot) on this tab; if it's stale (element not found), call search_elements again. Prefer this over coordinate-based typing when the field is in a snapshot.",
+    "Fill an input element by its uid. The uid MUST come from the most recent search_elements on this tab; if it's stale (element not found), call search_elements again. Prefer this over coordinate-based typing whenever you have the field's uid.",
   parameters: z.object({
     tabId: z.number().describe("The ID of the tab to fill the element in"),
     uid: z.string().describe("The unique identifier of the element to fill"),
@@ -127,7 +127,7 @@ export const fillElementByUidTool = tool({
 export const hoverElementByUidTool = tool({
   name: "hover_element_by_uid",
   description:
-    "Hover over an element by its uid. The uid MUST come from the most recent search_elements (or take_snapshot) on this tab; re-run search_elements if the uid is stale.",
+    "Hover over an element by its uid. The uid MUST come from the most recent search_elements on this tab; re-run search_elements if the uid is stale.",
   parameters: z.object({
     tabId: z.number().describe("The ID of the tab to hover over"),
     uid: z
@@ -206,7 +206,7 @@ export const getEditorValueTool = tool({
 export const fillFormTool = tool({
   name: "fill_form",
   description:
-    "Fill multiple form fields at once by their uids. All uids MUST come from the most recent search_elements (or take_snapshot) on this tab; if any is stale, re-run search_elements for fresh uids. Prefer this over filling fields one at a time.",
+    "Fill multiple form fields at once by their uids. All uids MUST come from the most recent search_elements on this tab; if any is stale, re-run search_elements for fresh uids. Prefer this over filling fields one at a time.",
   parameters: z.object({
     tabId: z.number().describe("The ID of the tab to fill the elements in"),
     elements: z

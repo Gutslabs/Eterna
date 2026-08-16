@@ -28,7 +28,7 @@ import { dispatchSidebarCommand } from "./sidebar-commands";
 import { readSidebarOpen } from "./sidebar-open-flag";
 
 const PENDING_SELECTION_KEY = "eterna-pending-selection";
-const SAVED_PROMPTS_KEY = "aipex-saved-prompts";
+const SAVED_PROMPTS_KEY = "eterna-saved-prompts";
 const MIN_SELECTION_LENGTH = 3;
 
 interface SavedPrompt {

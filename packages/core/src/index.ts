@@ -1,7 +1,15 @@
 // AI SDK
 export { aisdk } from "@openai/agents-extensions";
 // Agent
-export { AIPex } from "./agent/index.js";
+export { Eterna } from "./agent/index.js";
+
+export {
+  computeNextAutomationRun,
+  type ScheduledAutomation,
+  type ScheduledAutomationSchedule,
+  type ScheduledAutomationStatus,
+  validateScheduledAutomationSchedule,
+} from "./automation/scheduled.js";
 
 // Config
 export {
@@ -9,17 +17,32 @@ export {
   type AIProviderConfig,
   type AIProviderKey,
   type AppSettings,
+  type AppSettingsUpdate,
   type AutomationMode,
+  baseModelId,
   type CustomModelConfig,
+  changedAppSettings,
+  composeModelSelection,
   createConversationConfig,
   DEFAULT_APP_SETTINGS,
   DEFAULT_CONVERSATION_CONFIG,
+  defaultReasoningLevelFor,
   detectProviderFromHost,
   isValidConversationStorage,
+  type ModelSelection,
+  mergeAppSettings,
   normalizeConversationConfig,
+  normalizeModelSelection,
   type ProviderType,
+  REASONING_LEVEL_LABELS,
+  REASONING_LEVELS,
+  type ReasoningLevel,
+  reasoningLevelsFor,
   STORAGE_KEYS,
   type StorageKey,
+  splitModelSelection,
+  supportsReasoningLevels,
+  updateAppSettings,
   validateAutomationMode,
 } from "./config/index.js";
 
@@ -73,13 +96,13 @@ export type {
   AgentPlugin,
   AgentPluginContext,
   AgentPluginHooks,
-  AIPexOptions,
   AiSdkModel,
   BeforeChatPayload,
   ChatOptions,
   CompressionConfig,
   CompressionOptions,
   ConversationConfig,
+  EternaOptions,
   ForkInfo,
   FunctionTool,
   ImageInput,

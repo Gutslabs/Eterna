@@ -1,4 +1,4 @@
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
 import { cacheScreenshotMetadata } from "../automation/computer";
 import { RuntimeScreenshotStorage } from "../lib/screenshot-storage";
@@ -6,6 +6,7 @@ import { getAutomationMode } from "../runtime/automation-mode";
 import {
   captureVisibleTabWithElementCrop,
   compressImage,
+  compressImageWithSize,
   getImageSize,
   MAX_PADDING,
 } from "./screenshot-helpers.js";
@@ -145,13 +146,11 @@ When sendToLLM=true: Sends image to LLM (higher latency/cost, may capture sensit
     let imageHeight = 0;
 
     if (sendToLLM) {
-      // Compress for LLM
-      dataUrl = await compressImage(dataUrl, 0.6, 1024);
-
-      // Extract image dimensions
-      const size = await getImageSize(dataUrl);
-      imageWidth = size.width;
-      imageHeight = size.height;
+      // Compress for LLM; the compressor already knows the output dimensions
+      const compressed = await compressImageWithSize(dataUrl, 0.6, 1024);
+      dataUrl = compressed.dataUrl;
+      imageWidth = compressed.width;
+      imageHeight = compressed.height;
 
       // Cache screenshot metadata for computer tool
       if (viewport) {
@@ -277,13 +276,11 @@ When sendToLLM=true: Sends image to LLM (higher latency/cost) and enables coordi
     let imageHeight = 0;
 
     if (sendToLLM) {
-      // Compress for LLM
-      dataUrl = await compressImage(dataUrl, 0.6, 1024);
-
-      // Extract image dimensions
-      const size = await getImageSize(dataUrl);
-      imageWidth = size.width;
-      imageHeight = size.height;
+      // Compress for LLM; the compressor already knows the output dimensions
+      const compressed = await compressImageWithSize(dataUrl, 0.6, 1024);
+      dataUrl = compressed.dataUrl;
+      imageWidth = compressed.width;
+      imageHeight = compressed.height;
 
       // Cache screenshot metadata for computer tool
       if (viewport) {
@@ -431,14 +428,19 @@ PREFER search_elements for finding/interacting with elements. Use this only when
       );
     }
 
+    // Compress for LLM; the compressor reports the output size, so only the
+    // uncompressed path has to decode the image again to measure it.
+    let imageWidth: number;
+    let imageHeight: number;
     if (sendToLLM) {
-      // Compress for LLM
-      dataUrl = await compressImage(dataUrl, 0.6, 1024);
+      const compressed = await compressImageWithSize(dataUrl, 0.6, 1024);
+      dataUrl = compressed.dataUrl;
+      imageWidth = compressed.width;
+      imageHeight = compressed.height;
+    } else {
+      ({ width: imageWidth, height: imageHeight } =
+        await getImageSize(dataUrl));
     }
-
-    // Extract image dimensions
-    const { width: imageWidth, height: imageHeight } =
-      await getImageSize(dataUrl);
 
     // Cache screenshot metadata for computer tool
     if (sendToLLM && viewport) {

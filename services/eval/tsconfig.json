@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "incremental": false,
+    "lib": ["esnext"],
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": true,
+    "emitDeclarationOnly": false
+  },
+  "include": ["src/**/*", "../../mcp-bridge/src/tool-schemas.ts"]
+}

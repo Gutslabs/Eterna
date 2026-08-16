@@ -9,7 +9,7 @@
  * 1. Stripped from the tool result (replaced with a placeholder string).
  * 2. Injected as a follow-up user message with `input_image` content.
  *
- * This matches the message flow used in the original aipex codebase.
+ * This matches the message flow used in the original eterna codebase.
  */
 
 import type { AgentInputItem } from "@openai/agents";
@@ -28,6 +28,56 @@ const IMAGE_DATA_PLACEHOLDER =
 
 /** Marker on transient user-image messages so they can be pruned */
 export const TRANSIENT_SCREENSHOT_MARKER = "__transient_screenshot__";
+
+export const VISION_FALLBACK_TEXT =
+  "[Image omitted because the selected model does not support vision. Use text or page-reading tools instead.]";
+
+/** Replace image parts with a text fallback for text-only models. */
+export function stripImageInputs(items: AgentInputItem[]): AgentInputItem[] {
+  return items.map((item) => {
+    const message = item as {
+      type?: string;
+      role?: string;
+      content?: unknown;
+      providerData?: Record<string, unknown>;
+    };
+    if (message.type !== "message" || !Array.isArray(message.content)) {
+      return item;
+    }
+
+    const hadImage = message.content.some(
+      (part) =>
+        !!part &&
+        typeof part === "object" &&
+        (part as { type?: string }).type === "input_image",
+    );
+    if (!hadImage) return item;
+
+    const textParts = message.content.filter(
+      (part) =>
+        !part ||
+        typeof part !== "object" ||
+        (part as { type?: string }).type !== "input_image",
+    );
+    const fallbackPart = { type: "input_text", text: VISION_FALLBACK_TEXT };
+    return {
+      ...message,
+      content: message.providerData?.[TRANSIENT_SCREENSHOT_MARKER]
+        ? [fallbackPart]
+        : [...textParts, fallbackPart],
+    } as AgentInputItem;
+  });
+}
+
+// Shaping is deterministic per item and runs before EVERY model call in a
+// run, so cache the outcome per item identity: `null` marks a pass-through,
+// otherwise the [strippedResult, userImageMessage] pair. Without this, every
+// stored screenshot result (often 100KB+ of JSON) is re-parsed and
+// re-stringified on each of the run's model calls.
+const shapeOutcomeCache = new WeakMap<
+  object,
+  readonly [AgentInputItem, AgentInputItem] | null
+>();
 
 /**
  * Process a batch of AgentInputItems. For any `function_call_result` from
@@ -61,12 +111,23 @@ export function shapeScreenshotItems(
       continue;
     }
 
+    const cached = shapeOutcomeCache.get(funcResult);
+    if (cached !== undefined) {
+      if (cached) {
+        result.push(cached[0], cached[1]);
+      } else {
+        result.push(item);
+      }
+      continue;
+    }
+
     // Normalize output: the SDK wraps tool return values in
     // { type: 'text', text: '...' }, but older paths may use plain strings.
     const { jsonString, outputFormat } = extractOutputJsonString(
       funcResult.output,
     );
     if (!jsonString) {
+      shapeOutcomeCache.set(funcResult, null);
       result.push(item);
       continue;
     }
@@ -74,6 +135,7 @@ export function shapeScreenshotItems(
     // Try to parse the output and extract imageData
     const parsed = safeJsonParse<Record<string, unknown>>(jsonString);
     if (!parsed) {
+      shapeOutcomeCache.set(funcResult, null);
       result.push(item);
       continue;
     }
@@ -81,6 +143,7 @@ export function shapeScreenshotItems(
     const extracted = extractImageData(parsed);
     if (!extracted) {
       // No sendToLLM image data – pass through
+      shapeOutcomeCache.set(funcResult, null);
       result.push(item);
       continue;
     }
@@ -122,6 +185,7 @@ export function shapeScreenshotItems(
     } as AgentInputItem;
 
     result.push(userImageMessage);
+    shapeOutcomeCache.set(funcResult, [strippedItem, userImageMessage]);
   }
 
   return result;
@@ -130,10 +194,9 @@ export function shapeScreenshotItems(
 /**
  * Attach the user's current viewport screenshot to their OWN most recent
  * message (merged into its content), for the "always show the model what's on
- * screen" feature. It is NOT appended as a separate trailing message: the web
- * gateway (catgpt/ChatGPT web) forwards only the LAST user message to ChatGPT,
- * so a standalone screenshot message would become "the last message" and shadow
- * (drop) the user's actual question. Runs inside `callModelInputFilter`, which
+ * screen" feature. It is NOT appended as a separate trailing message, so the
+ * image always rides with the prompt it belongs to and can never be read as a
+ * question of its own. Runs inside `callModelInputFilter`, which
  * shapes only the per-model-call input and never the stored session — so the
  * screenshot reaches the model every turn yet is never persisted (history never
  * balloons). Falls back to a standalone transient message only when there is no
@@ -154,10 +217,7 @@ export function appendAmbientScreenshot(
   };
 
   // Attach the screenshot to the user's OWN most recent message so the image
-  // rides WITH their prompt — never as a separate trailing message. This is
-  // critical for the web gateway (catgpt/ChatGPT web), which forwards ONLY the
-  // last user message to ChatGPT: a standalone screenshot message would become
-  // "the last user message" and shadow (drop) the user's actual question. Skip
+  // rides WITH their prompt — never as a separate trailing message. Skip
   // transient screenshot messages so we land on the real prompt. Runs in
   // callModelInputFilter, so it shapes only the model-call input — never
   // persisted, so the stored prompt stays text-only.
@@ -287,7 +347,7 @@ interface ExtractedImage {
 
 /**
  * Extract imageData from parsed tool output.
- * Handles nested structures matching the old aipex pattern:
+ * Handles nested structures matching the old eterna pattern:
  *   { success, imageData, sendToLLM, screenshotUid }           (flat)
  *   { success, data: { imageData, sendToLLM, screenshotUid } } (one level)
  *   { data: { data: { imageData, sendToLLM, screenshotUid } } } (two levels)
@@ -297,7 +357,7 @@ function extractImageData(
 ): ExtractedImage | null {
   if (!parsed.success) return null;
 
-  // Navigate possible nesting levels (mirrors old aipex:
+  // Navigate possible nesting levels (mirrors old eterna:
   //   middleLayer?.data || middleLayer || parsedContent)
   const actual = resolveActualData(parsed);
 
@@ -325,7 +385,7 @@ function extractImageData(
  *   - one level:  { success, data: { imageData, ... } }
  *   - two levels: { data: { data: { imageData, ... } } }
  *
- * Mirrors the old aipex pattern:
+ * Mirrors the old eterna pattern:
  *   middleLayer?.data || middleLayer || parsedContent
  */
 function resolveActualData(
@@ -346,7 +406,7 @@ function resolveActualData(
  * Build the stripped tool output object (imageData replaced with placeholder).
  *
  * Always produces the `{ success: true, data: { ...actualData } }` envelope
- * to match the message format expected by the old aipex codebase.
+ * to match the message format expected by the old eterna codebase.
  */
 function buildStrippedOutput(
   parsed: Record<string, unknown>,
@@ -363,6 +423,6 @@ function buildStrippedOutput(
     stripped.screenshotUid = screenshotUid;
   }
 
-  // Always wrap in { success: true, data: { ... } } to match aipex convention
+  // Always wrap in { success: true, data: { ... } } to match eterna convention
   return { success: true, data: stripped };
 }

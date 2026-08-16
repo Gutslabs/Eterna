@@ -8,16 +8,13 @@
  * YouTube submissions are expanded into a sequential 10-minute queue.
  */
 
-import type { ContextItem } from "@aipexstudio/aipex-react/components/ai-elements/prompt-input";
-import { useChatContext } from "@aipexstudio/aipex-react/components/chatbot";
+import type { ContextItem } from "@eterna/react/components/ai-elements/prompt-input";
+import { useChatContext } from "@eterna/react/components/chatbot";
 import {
   DefaultInputArea,
   type ExtendedInputAreaProps,
-} from "@aipexstudio/aipex-react/components/chatbot/components";
-import type {
-  InputAreaProps,
-  MessageAttachment,
-} from "@aipexstudio/aipex-react/types";
+} from "@eterna/react/components/chatbot/components";
+import type { InputAreaProps, MessageAttachment } from "@eterna/react/types";
 import {
   lazy,
   Suspense,
@@ -31,6 +28,7 @@ import {
   readActivePageContext,
 } from "./browser-context-loader";
 import { useInputMode } from "./input-mode-context";
+import { isPageContextDismissed } from "./page-context-optout";
 import {
   cancelYoutubeTranscriptQueue,
   getYoutubeTranscriptQueueProgress,
@@ -39,7 +37,7 @@ import {
 } from "./youtube-transcript-feed";
 
 const VoiceInput = lazy(() =>
-  import("@aipexstudio/aipex-react/components/voice").then((module) => ({
+  import("@eterna/react/components/voice").then((module) => ({
     default: module.VoiceInput,
   })),
 );
@@ -81,6 +79,8 @@ export function BrowserChatInputArea(props: InputAreaProps) {
       // metadata. Once the conversation has messages the chip is
       // user-controlled: a missing chip means the user removed it with X,
       // and silently re-attaching the page would override that choice.
+      // Dismissing the welcome card is that same X for the first send, so it
+      // opts the page out here too.
       let withPage = contexts;
       const conversationEmpty = !messagesRef.current.some(
         (m) => m.role !== "system",
@@ -90,7 +90,7 @@ export function BrowserChatInputArea(props: InputAreaProps) {
         !contexts?.some((item) => item.id === CURRENT_PAGE_CONTEXT_ID)
       ) {
         const page = await readActivePageContext().catch(() => null);
-        if (page) {
+        if (page && !isPageContextDismissed(page.metadata?.url)) {
           withPage = [page, ...(contexts ?? [])];
         }
       }

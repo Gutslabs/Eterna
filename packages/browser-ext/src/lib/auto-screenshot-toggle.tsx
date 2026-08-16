@@ -10,9 +10,9 @@
  * the tooltip explains the exact behavior.
  */
 
-import { STORAGE_KEYS } from "@aipexstudio/aipex-core";
-import { cn } from "@aipexstudio/aipex-react/lib/utils";
-import { useStorage } from "@aipexstudio/browser-runtime/hooks";
+import { useStorage } from "@eterna/browser-runtime/hooks";
+import { STORAGE_KEYS } from "@eterna/core";
+import { cn } from "@eterna/react/lib/utils";
 import { EyeIcon, EyeOffIcon } from "lucide-react";
 
 export function AutoScreenshotToggle() {
@@ -36,7 +36,7 @@ export function AutoScreenshotToggle() {
           : "Screen context is off — the model receives page text only"
       }
       className={cn(
-        "inline-flex min-h-7 items-center justify-center gap-1.5 rounded-full px-2 text-xs transition-colors",
+        "inline-flex min-h-7 items-center justify-center rounded-full px-2 transition-colors",
         active
           ? "border border-border bg-accent text-foreground"
           : "border border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -47,7 +47,6 @@ export function AutoScreenshotToggle() {
       ) : (
         <EyeOffIcon className="size-4" />
       )}
-      <span>Screen</span>
     </button>
   );
 }

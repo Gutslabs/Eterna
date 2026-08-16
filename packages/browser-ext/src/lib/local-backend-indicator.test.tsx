@@ -1,14 +1,14 @@
 import {
   ConfigContext,
   type ConfigContextValue,
-} from "@aipexstudio/aipex-react/components/chatbot";
+} from "@eterna/react/components/chatbot";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalBackendIndicator } from "./local-backend-indicator";
 import { clearLocalBackendStatusCache } from "./local-backend-status";
 
 const config = {
-  settings: { aiModel: "catgpt-browser::GPT-5.6 Sol|High" },
+  settings: { aiModel: "gpt-5.6-sol" },
   isLoading: false,
   updateSetting: vi.fn(),
   updateSettings: vi.fn(),
@@ -49,5 +49,22 @@ describe("LocalBackendIndicator", () => {
         request: "launch-eterna-terminal",
       }),
     );
+  });
+
+  it("renders nothing at all while the backend is reachable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null)));
+
+    const { container } = render(
+      <ConfigContext.Provider value={config}>
+        <LocalBackendIndicator />
+      </ConfigContext.Provider>,
+    );
+
+    // The probe resolves async; wait for it, then assert the composer stays
+    // clean — a healthy backend earns no pixels.
+    await vi.waitFor(() => {
+      expect(container).toBeEmptyDOMElement();
+    });
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });

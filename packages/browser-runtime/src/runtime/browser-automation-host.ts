@@ -1,4 +1,4 @@
-import type { ContextProvider } from "@aipexstudio/aipex-core";
+import type { ContextProvider } from "@eterna/core";
 import type {
   AutomationTarget,
   RuntimeAddon,

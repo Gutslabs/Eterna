@@ -15,7 +15,7 @@
  * into a chip. Prompts persist locally.
  */
 
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -23,18 +23,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aipexstudio/aipex-react/components/ui/dialog";
+} from "@eterna/react/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from "@aipexstudio/aipex-react/components/ui/dropdown-menu";
-import { Input } from "@aipexstudio/aipex-react/components/ui/input";
-import { Textarea } from "@aipexstudio/aipex-react/components/ui/textarea";
+} from "@eterna/react/components/ui/dropdown-menu";
+import { Input } from "@eterna/react/components/ui/input";
+import { Textarea } from "@eterna/react/components/ui/textarea";
 import { BookmarkIcon, PinIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-const STORAGE_KEY = "aipex-saved-prompts";
+const STORAGE_KEY = "eterna-saved-prompts";
 const PENDING_CONTEXT_KEY = "eterna-pending-context";
 const MAX_PILLS = 3;
 

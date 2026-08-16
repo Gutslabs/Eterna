@@ -9,12 +9,12 @@ A robust conversation storage system for managing chat history with IndexedDB, L
 - 📦 **Auto Migration**: Seamlessly migrates from localStorage to IndexedDB
 - 🔒 **Type Safe**: Full TypeScript support
 - 🧪 **Well Tested**: Comprehensive unit and integration tests
-- 🎯 **Drop-in Replacement**: Compatible with aipex implementation
+- 🎯 **Drop-in Replacement**: Compatible with eterna implementation
 
 ## Installation
 
 ```typescript
-import { conversationStorage } from '@aipexstudio/browser-runtime';
+import { conversationStorage } from '@eterna/browser-runtime';
 ```
 
 ## Quick Start
@@ -22,8 +22,8 @@ import { conversationStorage } from '@aipexstudio/browser-runtime';
 ### Basic Usage
 
 ```typescript
-import { conversationStorage } from '@aipexstudio/browser-runtime';
-import type { UIMessage } from '@aipexstudio/browser-runtime';
+import { conversationStorage } from '@eterna/browser-runtime';
+import type { UIMessage } from '@eterna/browser-runtime';
 
 // Create messages
 const messages: UIMessage[] = [
@@ -61,7 +61,7 @@ await conversationStorage.clearAllConversations();
 ### Custom Configuration
 
 ```typescript
-import { ConversationStorage } from '@aipexstudio/browser-runtime';
+import { ConversationStorage } from '@eterna/browser-runtime';
 
 const customStorage = new ConversationStorage({
   maxConversations: 10,  // Keep 10 conversations instead of 5
@@ -247,7 +247,7 @@ npm test conversation
 
 ## Compatibility
 
-This implementation is **100% compatible** with the aipex conversation storage:
+This implementation is **100% compatible** with the eterna conversation storage:
 
 - ✅ Same data structures
 - ✅ Same database schema
@@ -257,9 +257,9 @@ This implementation is **100% compatible** with the aipex conversation storage:
 
 See [COMPATIBILITY.md](./COMPATIBILITY.md) for detailed verification.
 
-## Migration from aipex
+## Migration from eterna
 
-### Before (aipex)
+### Before (eterna)
 
 ```typescript
 import { ConversationStorage } from '~/lib/components/chatbot/conversation-storage';
@@ -268,10 +268,10 @@ const id = await ConversationStorage.saveConversation(messages);
 const conversations = await ConversationStorage.getAllConversations();
 ```
 
-### After (new-aipex)
+### After (new-eterna)
 
 ```typescript
-import { conversationStorage } from '@aipexstudio/browser-runtime';
+import { conversationStorage } from '@eterna/browser-runtime';
 
 const id = await conversationStorage.saveConversation(messages);
 const conversations = await conversationStorage.getAllConversations();
@@ -299,7 +299,7 @@ const conversations = await conversationStorage.getAllConversations();
 ### React Hook
 
 ```typescript
-import { conversationStorage } from '@aipexstudio/browser-runtime';
+import { conversationStorage } from '@eterna/browser-runtime';
 import { useState, useEffect } from 'react';
 
 function useConversations() {
@@ -374,4 +374,4 @@ const storage = new ConversationStorage({ maxConversations: 20 });
 
 ## License
 
-Part of the AIPex project.
+Part of the Eterna project.

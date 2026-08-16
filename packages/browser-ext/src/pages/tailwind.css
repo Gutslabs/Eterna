@@ -5,7 +5,7 @@
 
 /* Include workspace packages source files for Tailwind to scan */
 @source "../../src";
-@source "../../../aipex-react/src";
+@source "../../../eterna-react/src";
 @source "../../../browser-runtime/src";
 @source "../../../core/src";
 /* Generate the Tailwind utility classes Streamdown uses (code blocks, the copy

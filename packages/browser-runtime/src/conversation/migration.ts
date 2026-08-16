@@ -1,5 +1,8 @@
 import type { ConversationData } from "./types";
 
+// Pre-rebrand names, deliberately unchanged: these read data written by older
+// versions. Renaming them makes the migration look at keys nothing ever wrote,
+// so a user who has not migrated yet loses their old conversations.
 const OLD_STORAGE_KEY = "aipex-conversations";
 const MIGRATION_FLAG_KEY = "aipex-conversations-migrated";
 

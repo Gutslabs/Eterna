@@ -30,6 +30,20 @@ describe("mcp-bridge tool schema sync", () => {
     expect(new Set(advertisedNames).size).toBe(advertisedNames.length);
   });
 
+  it("advertises the registered tool descriptions verbatim", () => {
+    // The registry is the single source of truth for what the model reads;
+    // the bridge must mirror it or MCP clients see stale/conflicting guidance.
+    const advertised = new Map(
+      toolSchemas.map((schema) => [schema.name, schema.description]),
+    );
+    for (const tool of allBrowserTools) {
+      expect(
+        advertised.get(tool.name),
+        `'${tool.name}' description drifted between the registry and the bridge`,
+      ).toBe(tool.description);
+    }
+  });
+
   it("declares required properties that exist in each schema", () => {
     for (const schema of toolSchemas) {
       for (const required of schema.inputSchema.required ?? []) {

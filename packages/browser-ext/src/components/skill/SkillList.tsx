@@ -1,17 +1,14 @@
-import {
-  Alert,
-  AlertDescription,
-} from "@aipexstudio/aipex-react/components/ui/alert";
-import { Badge } from "@aipexstudio/aipex-react/components/ui/badge";
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import { Alert, AlertDescription } from "@eterna/react/components/ui/alert";
+import { Badge } from "@eterna/react/components/ui/badge";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@aipexstudio/aipex-react/components/ui/card";
-import { Input } from "@aipexstudio/aipex-react/components/ui/input";
+} from "@eterna/react/components/ui/card";
+import { Input } from "@eterna/react/components/ui/input";
 import { AlertCircle, Filter, RefreshCw, Search } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";

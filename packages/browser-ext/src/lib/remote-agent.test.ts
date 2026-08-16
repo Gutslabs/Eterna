@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@aipexstudio/aipex-core";
+import type { AgentEvent } from "@eterna/core";
 import { describe, expect, it } from "vitest";
 import type { ChatHostInbound, ChatHostOutbound } from "./chat-port-protocol";
 import { type ClientPortLike, RemoteBrowserAgent } from "./remote-agent";
@@ -70,96 +70,6 @@ describe("RemoteBrowserAgent", () => {
       events.push(event);
     }
     expect(events).toEqual([delta("a"), delta("b")]);
-  });
-
-  it("keeps one gateway route until New Chat explicitly rotates it", async () => {
-    const host = fakeHostPort();
-    const agent = new RemoteBrowserAgent(
-      () => host.port,
-      "client-route",
-      "route-stable",
-    );
-
-    host.setInboundHandler((message) => {
-      if (message.type === "start_turn") {
-        host.emit({
-          type: "turn_done",
-          runId: message.runId,
-          interrupted: false,
-        });
-      } else if (message.type === "rpc") {
-        host.emit({
-          type: "rpc_result",
-          reqId: message.reqId,
-          ok: true,
-        });
-      }
-    });
-
-    for await (const _ of agent.chat("first")) {
-      // consume
-    }
-    for await (const _ of agent.chat("follow up")) {
-      // consume
-    }
-
-    const beforeNewChat = host.received.filter(
-      (message) => message.type === "start_turn",
-    );
-    expect(beforeNewChat[0]?.options.routeId).toBe("route-stable");
-    expect(beforeNewChat[1]?.options.routeId).toBe("route-stable");
-
-    await agent.freshGatewayThread("catgpt-browser", {
-      resetRemote: false,
-    });
-    for await (const _ of agent.chat("new conversation")) {
-      // consume
-    }
-
-    const afterNewChat = host.received.filter(
-      (message) => message.type === "start_turn",
-    );
-    expect(afterNewChat[2]?.options.routeId).toMatch(/^route-/);
-    expect(afterNewChat[2]?.options.routeId).not.toBe("route-stable");
-  });
-
-  it("restores the saved gateway route when a conversation is selected", async () => {
-    const host = fakeHostPort();
-    host.setInboundHandler((message) => {
-      if (message.type === "start_turn") {
-        host.emit({
-          type: "turn_done",
-          runId: message.runId,
-          interrupted: false,
-        });
-      }
-    });
-    const firstAgent = new RemoteBrowserAgent(
-      () => host.port,
-      "client-first",
-      "route-for-saved-chat",
-    );
-
-    const firstRun = firstAgent.chat("first");
-    for await (const _ of firstRun) {
-      // consume
-    }
-    firstAgent.bindConversation("conversation-route-test", firstRun.runId);
-
-    const restoredAgent = new RemoteBrowserAgent(
-      () => host.port,
-      "client-restored",
-      "unrelated-route",
-    );
-    restoredAgent.activateGatewayConversation("conversation-route-test");
-    for await (const _ of restoredAgent.chat("continue saved chat")) {
-      // consume
-    }
-
-    const starts = host.received.filter(
-      (message) => message.type === "start_turn",
-    );
-    expect(starts.at(-1)?.options.routeId).toBe("route-for-saved-chat");
   });
 
   it("ignores events for other runs", async () => {

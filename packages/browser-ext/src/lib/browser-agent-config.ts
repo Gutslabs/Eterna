@@ -3,18 +3,15 @@
  * Provides default configuration for browser extension use cases
  */
 
-import type { AppSettings, FunctionTool } from "@aipexstudio/aipex-core";
+import { allBrowserProviders, IndexedDBStorage } from "@eterna/browser-runtime";
+import { useStorage } from "@eterna/browser-runtime/hooks";
+import type { AppSettings, FunctionTool } from "@eterna/core";
 import {
   type AutomationMode,
   SessionStorage,
   STORAGE_KEYS,
   validateAutomationMode,
-} from "@aipexstudio/aipex-core";
-import {
-  allBrowserProviders,
-  IndexedDBStorage,
-} from "@aipexstudio/browser-runtime";
-import { useStorage } from "@aipexstudio/browser-runtime/hooks";
+} from "@eterna/core";
 import { useCallback, useMemo } from "react";
 import { createBrowserModel, resolveBrowserTools } from "./browser-model";
 
@@ -28,7 +25,7 @@ export function useBrowserStorage() {
     () =>
       new SessionStorage(
         new IndexedDBStorage({
-          dbName: "aipex-sessions",
+          dbName: "eterna-sessions",
           storeName: "sessions",
         }),
       ),

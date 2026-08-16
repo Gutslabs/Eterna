@@ -23,7 +23,7 @@ const DEFAULT_WS_URL = "ws://localhost:9223/cli";
 const ENTRYPOINT_PATH = "/entrypoint.sh";
 const CALL_TIMEOUT_MS = 60_000;
 const MAX_RETRY_TIMEOUT_MS = parseInt(
-  process.env.AIPEX_CONNECT_TIMEOUT ?? "60000",
+  process.env.ETERNA_CONNECT_TIMEOUT ?? "60000",
   10,
 );
 const INITIAL_BACKOFF_MS = 500;
@@ -96,8 +96,8 @@ Examples:
   eterna-cli capture_screenshot
 
 Environment:
-  AIPEX_WS_URL              Daemon WebSocket URL (default: ws://localhost:9223/cli)
-  AIPEX_CONNECT_TIMEOUT     Max ms to wait for daemon (default: 60000)
+  ETERNA_WS_URL              Daemon WebSocket URL (default: ws://localhost:9223/cli)
+  ETERNA_CONNECT_TIMEOUT     Max ms to wait for daemon (default: 60000)
 `);
 }
 
@@ -345,7 +345,7 @@ async function runTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<void> {
-  const wsUrl = process.env.AIPEX_WS_URL ?? DEFAULT_WS_URL;
+  const wsUrl = process.env.ETERNA_WS_URL ?? DEFAULT_WS_URL;
   const deadline = Date.now() + MAX_RETRY_TIMEOUT_MS;
   let backoff = INITIAL_BACKOFF_MS;
   let attempt = 0;

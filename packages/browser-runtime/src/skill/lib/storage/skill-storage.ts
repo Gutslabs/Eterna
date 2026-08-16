@@ -148,7 +148,7 @@ class SimpleFileSystem {
 // Create a simple file system instance
 export const simpleFS = new SimpleFileSystem();
 
-const DB_NAME = "AIPexSkills";
+const DB_NAME = "EternaSkills";
 const DB_VERSION = 1;
 const STORE_NAME = "skills";
 

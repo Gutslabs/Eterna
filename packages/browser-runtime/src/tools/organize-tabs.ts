@@ -360,11 +360,14 @@ export async function groupTabsByAI(): Promise<OrganizeTabsResult> {
         const parsed = TabGroupingResponseSchema.safeParse(aiResponse);
 
         if (parsed.success) {
+          // Set lookup instead of a nested scan: with 100 tabs the some()
+          // inside the filter made this ~10k comparisons.
+          const validTabIds = new Set(validTabs.map((t) => t.id));
           groupingResult = parsed.data.groups.map((g) => ({
             emoji: validateEmoji(g.emoji),
             category: sanitizeString(g.category),
             color: VALID_COLORS.includes(g.color) ? g.color : getRandomColor(),
-            tabIds: g.tabIds.filter((id) => validTabs.some((t) => t.id === id)),
+            tabIds: g.tabIds.filter((id) => validTabIds.has(id)),
           }));
         } else {
           console.warn(

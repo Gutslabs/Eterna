@@ -6,8 +6,8 @@
  * for use in the browser extension context.
  */
 
-import type { FunctionTool } from "@aipexstudio/aipex-core";
-import { allBrowserTools } from "@aipexstudio/browser-runtime";
+import { allBrowserTools } from "@eterna/browser-runtime";
+import type { FunctionTool } from "@eterna/core";
 
 export interface ToolMetadata {
   name: string;

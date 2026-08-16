@@ -1,11 +1,11 @@
 /**
  * BrowserMessageList
  * Wraps the default MessageList and hides it when inputMode is "voice",
- * matching aipex's behaviour where messages are hidden in voice mode.
+ * matching eterna's behaviour where messages are hidden in voice mode.
  */
 
-import { DefaultMessageList } from "@aipexstudio/aipex-react/components/chatbot/components";
-import type { MessageListProps } from "@aipexstudio/aipex-react/types";
+import { DefaultMessageList } from "@eterna/react/components/chatbot/components";
+import type { MessageListProps } from "@eterna/react/types";
 import { useInputMode } from "./input-mode-context";
 
 export function BrowserMessageList(
@@ -13,7 +13,7 @@ export function BrowserMessageList(
 ) {
   const { inputMode } = useInputMode();
 
-  // In voice mode, hide the message list (matching aipex full-screen voice behaviour)
+  // In voice mode, hide the message list (matching eterna full-screen voice behaviour)
   if (inputMode === "voice") {
     return null;
   }

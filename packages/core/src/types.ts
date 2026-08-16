@@ -14,7 +14,7 @@ export type { FunctionTool, AiSdkModel, AgentInputItem, OpenAIAgent };
 // Agent Types
 // ============================================================================
 
-export interface AIPexOptions<
+export interface EternaOptions<
   TTools extends readonly FunctionTool<any, any, any>[] = FunctionTool<
     any,
     any,
@@ -47,6 +47,11 @@ export interface AIPexOptions<
   model: AiSdkModel;
   tools?: TTools;
   maxTurns?: number;
+  /**
+   * Whether the selected model accepts image inputs. When false, image parts
+   * are replaced with a short text notice before each model call.
+   */
+  supportsVision?: boolean;
 
   /**
    * Disable conversation management (stateless mode).
@@ -179,7 +184,7 @@ export interface MetricsPayload {
 }
 
 export interface AgentPluginContext {
-  agent: import("./agent/aipex.js").AIPex;
+  agent: import("./agent/eterna.js").Eterna;
 }
 
 export interface AgentPluginHooks {

@@ -1,20 +1,20 @@
 import { openai } from "@ai-sdk/openai";
 import {
-  AIPex,
   aisdk,
   ConversationManager,
+  Eterna,
   InMemoryStorage,
   type SerializedSession,
   SessionStorage,
 } from "../src/index.js";
 
 async function main() {
-  console.log("🤖 AIPex Core - Session Fork Example\n");
+  console.log("🤖 Eterna Core - Session Fork Example\n");
 
   const storage = new SessionStorage(new InMemoryStorage<SerializedSession>());
   const manager = new ConversationManager(storage);
 
-  const agent = AIPex.create({
+  const agent = Eterna.create({
     instructions: "You are a helpful assistant that remembers conversations.",
     model: aisdk(openai("gpt-4o")),
     conversationManager: manager,

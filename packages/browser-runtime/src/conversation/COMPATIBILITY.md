@@ -1,4 +1,4 @@
-# Compatibility Verification: aipex vs new-aipex Conversation Storage
+# Compatibility Verification: eterna vs new-eterna Conversation Storage
 
 ## Data Structure Compatibility
 
@@ -23,7 +23,7 @@ interface ConversationData {
 
 ### Database Configuration
 
-| Property | aipex | new-aipex | Compatible |
+| Property | eterna | new-eterna | Compatible |
 |----------|-------|-----------|------------|
 | Database Name | `aipex-conversations-db` | `aipex-conversations-db` (default) | ✅ |
 | Store Name | `conversations` | `conversations` (default) | ✅ |
@@ -38,7 +38,7 @@ interface ConversationData {
 
 ### Configuration
 
-| Property | aipex | new-aipex | Compatible |
+| Property | eterna | new-eterna | Compatible |
 |----------|-------|-----------|------------|
 | Max Conversations | `5` (hardcoded) | `5` (default, configurable) | ✅ |
 | Sort Order | `updatedAt` descending | `updatedAt` descending | ✅ |
@@ -52,7 +52,7 @@ interface ConversationData {
 
 ### Migration Keys
 
-| Property | aipex | new-aipex | Compatible |
+| Property | eterna | new-eterna | Compatible |
 |----------|-------|-----------|------------|
 | Old Storage Key | `aipex-conversations` | `aipex-conversations` | ✅ |
 | Migration Flag | `aipex-conversations-migrated` | `aipex-conversations-migrated` | ✅ |
@@ -66,7 +66,7 @@ interface ConversationData {
 
 ### Public Methods
 
-| Method | aipex | new-aipex | Compatible |
+| Method | eterna | new-eterna | Compatible |
 |--------|-------|-----------|------------|
 | `saveConversation(messages)` | ✅ Static | ✅ Instance | ⚠️ Different |
 | `getAllConversations()` | ✅ Static | ✅ Instance | ⚠️ Different |
@@ -75,13 +75,13 @@ interface ConversationData {
 | `deleteConversation(id)` | ✅ Static | ✅ Instance | ⚠️ Different |
 | `clearAllConversations()` | ✅ Static | ✅ Instance | ⚠️ Different |
 
-**Note**: new-aipex provides both:
+**Note**: new-eterna provides both:
 - **Singleton instance** (`conversationStorage`) for drop-in replacement
 - **Class** (`ConversationStorage`) for custom instances
 
 ### Usage Comparison
 
-**aipex (Static Methods)**:
+**eterna (Static Methods)**:
 ```typescript
 import { ConversationStorage } from '~/lib/components/chatbot/conversation-storage';
 
@@ -89,9 +89,9 @@ const id = await ConversationStorage.saveConversation(messages);
 const conversations = await ConversationStorage.getAllConversations();
 ```
 
-**new-aipex (Singleton Instance - Recommended)**:
+**new-eterna (Singleton Instance - Recommended)**:
 ```typescript
-import { conversationStorage } from '@aipexstudio/browser-runtime';
+import { conversationStorage } from '@eterna/browser-runtime';
 
 const id = await conversationStorage.saveConversation(messages);
 const conversations = await conversationStorage.getAllConversations();
@@ -105,7 +105,7 @@ const conversations = await conversationStorage.getAllConversations();
 
 ### Title Generation
 
-| Aspect | aipex | new-aipex | Compatible |
+| Aspect | eterna | new-eterna | Compatible |
 |--------|-------|-----------|------------|
 | Source | First user message text | First user message text | ✅ |
 | Max Length | 30 chars + "..." | 30 chars + "..." | ✅ |
@@ -115,7 +115,7 @@ const conversations = await conversationStorage.getAllConversations();
 
 ### Message Filtering
 
-| Aspect | aipex | new-aipex | Compatible |
+| Aspect | eterna | new-eterna | Compatible |
 |--------|-------|-----------|------------|
 | Filter System Messages | ✅ Yes | ✅ Yes | ✅ |
 | Keep User Messages | ✅ Yes | ✅ Yes | ✅ |
@@ -125,7 +125,7 @@ const conversations = await conversationStorage.getAllConversations();
 
 ### ID Generation
 
-| Aspect | aipex | new-aipex | Compatible |
+| Aspect | eterna | new-eterna | Compatible |
 |--------|-------|-----------|------------|
 | Format | `conv_{timestamp}_{random}` | `conv_{timestamp}_{random}` | ✅ |
 | Timestamp | `Date.now()` | `Date.now()` | ✅ |
@@ -139,7 +139,7 @@ const conversations = await conversationStorage.getAllConversations();
 
 ### Code Organization
 
-| Aspect | aipex | new-aipex | Impact |
+| Aspect | eterna | new-eterna | Impact |
 |--------|-------|-----------|--------|
 | Structure | Single file, static class | Modular (types, LRU, migration, storage) | ✅ Better maintainability |
 | LRU Logic | Embedded in ConversationStorage | Separate `LRUPolicy` class | ✅ Better testability |
@@ -150,7 +150,7 @@ const conversations = await conversationStorage.getAllConversations();
 
 ### Testability
 
-| Aspect | aipex | new-aipex | Improvement |
+| Aspect | eterna | new-eterna | Improvement |
 |--------|-------|-----------|-------------|
 | Unit Testing | ⚠️ Difficult (static methods) | ✅ Easy (dependency injection) | ✅ |
 | Mocking | ⚠️ Hard to mock IndexedDB | ✅ Easy to mock storage | ✅ |
@@ -171,17 +171,17 @@ const conversations = await conversationStorage.getAllConversations();
 
 2. **Code Migration**: ✅ Simple
    ```typescript
-   // Old (aipex)
+   // Old (eterna)
    import { ConversationStorage } from '~/lib/components/chatbot/conversation-storage';
    await ConversationStorage.saveConversation(messages);
    
-   // New (new-aipex) - Just change import
-   import { conversationStorage } from '@aipexstudio/browser-runtime';
+   // New (new-eterna) - Just change import
+   import { conversationStorage } from '@eterna/browser-runtime';
    await conversationStorage.saveConversation(messages);
    ```
 
 3. **Configuration**: ✅ Optional
-   - Default config matches aipex exactly
+   - Default config matches eterna exactly
    - Can customize if needed:
    ```typescript
    const storage = new ConversationStorage({
@@ -233,4 +233,4 @@ const conversations = await conversationStorage.getAllConversations();
 
 **Overall Status**: ✅ **FULLY COMPATIBLE**
 
-The new-aipex implementation is a drop-in replacement for aipex with improved architecture and maintainability while maintaining 100% data and behavior compatibility.
+The new-eterna implementation is a drop-in replacement for eterna with improved architecture and maintainability while maintaining 100% data and behavior compatibility.

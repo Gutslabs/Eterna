@@ -59,7 +59,17 @@ export class Session implements OpenAISession {
   async addItems(items: AgentInputItem[]): Promise<void> {
     this.items.push(...items);
     this.metadata["lastActiveAt"] = Date.now();
-    this.updatePreview();
+    // The preview only derives from the latest real user message, so a batch
+    // without one (the common per-turn tool/assistant append) can't change it.
+    const hasUserMessage = items.some(
+      (item) =>
+        item.type === "message" &&
+        item.role === "user" &&
+        !isTransientScreenshotItem(item),
+    );
+    if (hasUserMessage || this.preview === undefined) {
+      this.updatePreview();
+    }
   }
 
   async popItem(): Promise<AgentInputItem | undefined> {
@@ -158,14 +168,19 @@ export class Session implements OpenAISession {
   }
 
   private updatePreview(): void {
-    const latestUserMessage = [...this.items]
-      .reverse()
-      .find(
-        (item) =>
-          item.type === "message" &&
-          item.role === "user" &&
-          !isTransientScreenshotItem(item),
-      );
+    let latestUserMessage: AgentInputItem | undefined;
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+      if (
+        item !== undefined &&
+        item.type === "message" &&
+        item.role === "user" &&
+        !isTransientScreenshotItem(item)
+      ) {
+        latestUserMessage = item;
+        break;
+      }
+    }
 
     const previewSource =
       this.extractContent(latestUserMessage) ??

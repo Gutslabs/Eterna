@@ -1,4 +1,4 @@
-import type { UIMessage } from "@aipexstudio/aipex-react/types";
+import type { UIMessage } from "@eterna/react/types";
 import { describe, expect, it } from "vitest";
 import { prepareRunReplay } from "./run-replay";
 

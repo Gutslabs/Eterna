@@ -10,13 +10,13 @@
  * focuses the search; Esc clears it, then closes the page.
  */
 
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
-import { useTranslation } from "@aipexstudio/aipex-react/i18n/context";
-import { cn } from "@aipexstudio/aipex-react/lib/utils";
 import {
   type ConversationData,
   conversationStorage,
-} from "@aipexstudio/browser-runtime";
+} from "@eterna/browser-runtime";
+import { Button } from "@eterna/react/components/ui/button";
+import { useTranslation } from "@eterna/react/i18n/context";
+import { cn } from "@eterna/react/lib/utils";
 import {
   ArrowLeftIcon,
   MessageSquareIcon,
@@ -29,6 +29,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -196,18 +197,32 @@ export function ConversationHistoryPage({
     [load],
   );
 
-  if (!open) return null;
-
   const trimmed = query.trim();
   const q = trimmed.toLowerCase();
-  const filtered = q
-    ? conversations.filter(
-        (c) =>
-          c.title.toLowerCase().includes(q) ||
-          Boolean(c.domain?.toLowerCase().includes(q)) ||
-          (contentSearch && conversationBody(c).toLowerCase().includes(q)),
-      )
-    : [];
+
+  // Flattening every conversation's full message text is far too heavy to
+  // re-run per keystroke — build the lowercased bodies once per load, and
+  // only when content search is actually enabled.
+  const bodyIndex = useMemo(() => {
+    if (!contentSearch) return null;
+    const map = new Map<string, string>();
+    for (const c of conversations) {
+      map.set(c.id, conversationBody(c).toLowerCase());
+    }
+    return map;
+  }, [contentSearch, conversations]);
+
+  const filtered = useMemo(() => {
+    if (!q) return [];
+    return conversations.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        Boolean(c.domain?.toLowerCase().includes(q)) ||
+        (contentSearch && (bodyIndex?.get(c.id)?.includes(q) ?? false)),
+    );
+  }, [q, conversations, contentSearch, bodyIndex]);
+
+  if (!open) return null;
 
   const pinned = conversations.filter((c) => c.pinned);
   const unpinned = conversations.filter((c) => !c.pinned);

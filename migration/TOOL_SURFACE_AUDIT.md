@@ -1,6 +1,6 @@
-# Tool Surface Audit: aipex vs new-aipex
+# Tool Surface Audit: eterna vs new-eterna
 
-> **Purpose**: Compare legacy MCP tool set (`aipex/src/mcp/index.ts`) with new browser-runtime default tool bundle (`new-aipex/packages/browser-runtime/src/tools/index.ts`).
+> **Purpose**: Compare legacy MCP tool set (`eterna/src/mcp/index.ts`) with new browser-runtime default tool bundle (`new-eterna/packages/browser-runtime/src/tools/index.ts`).
 
 ---
 

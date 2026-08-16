@@ -10,7 +10,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@aipexstudio/aipex-react/components/ui/tabs";
+} from "@eterna/react/components/ui/tabs";
 import { Puzzle, Search } from "lucide-react";
 import { useCallback, useState } from "react";
 import {

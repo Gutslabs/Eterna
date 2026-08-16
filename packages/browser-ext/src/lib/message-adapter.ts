@@ -1,10 +1,10 @@
 /**
  * Message Adapter
- * Converts between aipex-react UIMessage and browser-runtime ConversationData format
+ * Converts between eterna-react UIMessage and browser-runtime ConversationData format
  */
 
-import type { UIMessage as ReactUIMessage } from "@aipexstudio/aipex-react/types";
-import type { UIMessage as RuntimeUIMessage } from "@aipexstudio/browser-runtime";
+import type { UIMessage as RuntimeUIMessage } from "@eterna/browser-runtime";
+import type { UIMessage as ReactUIMessage } from "@eterna/react/types";
 
 /** Tool names whose results may include screenshot image data */
 const SCREENSHOT_TOOL_NAMES = new Set([
@@ -89,7 +89,7 @@ function stripImageDataFromToolOutput(
 }
 
 /**
- * Convert aipex-react UIMessage to runtime UIMessage for storage
+ * Convert eterna-react UIMessage to runtime UIMessage for storage
  */
 export function toStorageFormat(
   messages: ReactUIMessage[],
@@ -221,7 +221,7 @@ function extractBusinessFailure(
 }
 
 /**
- * Convert runtime UIMessage back to aipex-react UIMessage for display.
+ * Convert runtime UIMessage back to eterna-react UIMessage for display.
  * This function:
  * - Correlates tool_use and tool_result parts by id to restore proper toolName and input
  * - Parses JSON-stringified tool content
@@ -350,8 +350,25 @@ export function fromStorageFormat(
       }
     });
 
-    // Third pass: merge tool_use with tool_result if both exist for the same call
-    // This avoids showing duplicate tool parts
+    // Third pass: merge tool_use with tool_result if both exist for the same
+    // call. Results are indexed by toolCallId up front — a long agent turn can
+    // carry hundreds of tool parts, and a find() inside the loop made this
+    // O(parts²) on every conversation restore.
+    const resultByToolCallId = new Map<
+      string,
+      (typeof convertedParts)[number]
+    >();
+    for (const part of convertedParts) {
+      if (
+        part.type === "tool" &&
+        part.toolCallId &&
+        part.state !== "pending" &&
+        !resultByToolCallId.has(part.toolCallId)
+      ) {
+        resultByToolCallId.set(part.toolCallId, part);
+      }
+    }
+
     const mergedParts: (typeof convertedParts)[number][] = [];
     const processedToolCallIds = new Set<string>();
 
@@ -363,23 +380,10 @@ export function fromStorageFormat(
           continue;
         }
 
-        // Find if there's a corresponding result for this tool call
-        const resultPart = convertedParts.find(
-          (p) =>
-            p.type === "tool" &&
-            p.toolCallId === toolCallId &&
-            p.state !== "pending" &&
-            p !== part,
-        );
-
-        if (resultPart && resultPart.type === "tool") {
-          // Use the result part (which has the full info)
-          mergedParts.push(resultPart);
-        } else {
-          // No result, use the original part
-          mergedParts.push(part);
-        }
-
+        const resultPart = resultByToolCallId.get(toolCallId);
+        // Use the result part (which has the full info) when it exists and is
+        // a distinct entry; otherwise keep the original part.
+        mergedParts.push(resultPart && resultPart !== part ? resultPart : part);
         processedToolCallIds.add(toolCallId);
       } else {
         mergedParts.push(part);

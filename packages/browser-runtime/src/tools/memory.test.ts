@@ -1,10 +1,15 @@
+import { STORAGE_KEYS } from "@eterna/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addMemory,
+  importLocalMemoriesOnce,
   loadMemories,
+  recallTool,
   removeMemory,
   renderMemoriesForPrompt,
 } from "./memory";
+
+type Invocable = { invoke: (ctx: unknown, input: string) => Promise<unknown> };
 
 let store: Record<string, unknown>;
 
@@ -65,6 +70,107 @@ describe("memory store", () => {
     await addMemory("keep me");
     expect(await removeMemory("mem-nope")).toBe(false);
     expect(await loadMemories()).toHaveLength(1);
+  });
+});
+
+describe("supermemory dual-write", () => {
+  it("mirrors a saved fact to the configured local server, soft-failing", async () => {
+    store[STORAGE_KEYS.SUPERMEMORY] = {
+      url: "http://localhost:6767",
+      apiKey: "sm_test",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { saved } = await addMemory("uses pnpm");
+    expect(saved).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:6767/v3/documents",
+      expect.anything(),
+    );
+
+    fetchMock.mockRejectedValue(new Error("down"));
+    const second = await addMemory("prefers dark mode");
+    expect(second.saved).toBe(true);
+  });
+});
+
+describe("forget parity", () => {
+  it("asks the server to forget the removed fact's text", async () => {
+    store[STORAGE_KEYS.SUPERMEMORY] = {
+      url: "http://localhost:6767",
+      apiKey: "sm_test",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { id } = await addMemory("prefers dark mode");
+    fetchMock.mockClear();
+    expect(await removeMemory(id as string)).toBe(true);
+    const call = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/v4/memories/forget-matching"),
+    );
+    expect(call).toBeTruthy();
+    expect(JSON.parse((call?.[1] as RequestInit).body as string)).toMatchObject(
+      { query: "prefers dark mode" },
+    );
+  });
+});
+
+describe("importLocalMemoriesOnce", () => {
+  it("pushes existing facts once and sets the flag", async () => {
+    await addMemory("fact one");
+    store[STORAGE_KEYS.SUPERMEMORY] = {
+      url: "http://localhost:6767",
+      apiKey: "sm_test",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await importLocalMemoriesOnce();
+    const documentCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes("/v3/documents"),
+    );
+    expect(documentCalls).toHaveLength(1);
+    expect(store[STORAGE_KEYS.SUPERMEMORY_IMPORTED]).toBe(true);
+
+    await importLocalMemoriesOnce();
+    expect(
+      fetchMock.mock.calls.filter(([url]) =>
+        String(url).includes("/v3/documents"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("does not set the flag when the push fails", async () => {
+    await addMemory("fact one");
+    store[STORAGE_KEYS.SUPERMEMORY] = {
+      url: "http://localhost:6767",
+      apiKey: "sm_test",
+    };
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
+    await importLocalMemoriesOnce();
+    expect(store[STORAGE_KEYS.SUPERMEMORY_IMPORTED]).toBeUndefined();
+  });
+});
+
+describe("recall tool", () => {
+  it("falls back to substring search over local memories when unconfigured", async () => {
+    await addMemory("Main repo is eterna");
+    await addMemory("Prefers Turkish answers");
+    const result = (await (recallTool as unknown as Invocable).invoke(
+      {},
+      JSON.stringify({ query: "repo" }),
+    )) as { results: Array<{ memory: string }>; source: string };
+    expect(result.source).toBe("local");
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.memory).toBe("Main repo is eterna");
   });
 });
 

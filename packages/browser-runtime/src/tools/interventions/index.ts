@@ -8,7 +8,7 @@
  * - cancel_intervention: Cancel current intervention
  */
 
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
 import { interventionManager } from "../../intervention/intervention-manager.js";
 import { interventionRegistry } from "../../intervention/intervention-registry.js";

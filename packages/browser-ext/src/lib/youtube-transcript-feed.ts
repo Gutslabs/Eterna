@@ -5,15 +5,15 @@
  * window is sent only after the previous AI response has finished.
  */
 
-import type { ContextItem } from "@aipexstudio/aipex-react/components/ai-elements/prompt-input";
-import type { MessageAttachment } from "@aipexstudio/aipex-react/types";
 import {
   extractYoutubeVideoId,
   formatTimecode,
   getYoutubeTranscriptWindows,
   type TranscriptWindow,
   type YoutubeTranscriptWindows,
-} from "@aipexstudio/browser-runtime/tools/youtube-transcript-chunks";
+} from "@eterna/browser-runtime/tools/youtube-transcript-chunks";
+import type { ContextItem } from "@eterna/react/components/ai-elements/prompt-input";
+import type { MessageAttachment } from "@eterna/react/types";
 import { CURRENT_PAGE_CONTEXT_ID } from "./context-ids";
 
 export const YOUTUBE_TRANSCRIPT_CONTEXT_KIND = "youtube-transcript";
@@ -135,14 +135,16 @@ export function buildTranscriptChunkContext(
   const duration = transcript.durationSeconds
     ? `, duration ${formatTimecode(transcript.durationSeconds)}`
     : "";
+  // The feed protocol is described HERE, on the data itself, so the system
+  // prompt carries nothing YouTube-specific on non-YouTube pages.
   const before =
     window.part > 1
-      ? " Earlier parts were attached to previous messages in this conversation."
+      ? " Earlier parts were attached to previous messages in this conversation and remain valid."
       : "";
   const after =
     window.part < totalParts
-      ? " The next part is already queued and will be sent automatically after this response."
-      : " This is the final part — the conversation now contains the full transcript.";
+      ? " The next part is already queued and will be sent automatically after your response — do not ask for it and do not call get_youtube_transcript; only parts up to this one have arrived, so don't claim coverage of later parts."
+      : " This is the final part — the conversation now contains the full transcript; complete the request using the accumulated work from all parts.";
 
   const value = [
     `[Auto-attached YouTube transcript — part ${window.part}/${totalParts}, covering ${range}]`,

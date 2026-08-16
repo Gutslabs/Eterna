@@ -1,9 +1,9 @@
 /**
  * MCP WebSocket Bridge Panel
- * UI for connecting/disconnecting the extension to the aipex-mcp-bridge.
+ * UI for connecting/disconnecting the extension to the eterna-mcp-bridge.
  */
 
-import type { WsMcpServerState } from "@aipexstudio/browser-runtime";
+import type { WsMcpServerState } from "@eterna/browser-runtime";
 import { useCallback, useEffect, useState } from "react";
 
 const DEFAULT_URL = "ws://localhost:9223";
@@ -77,8 +77,8 @@ export function McpBridgePanel() {
       <h3 className="text-lg font-semibold mb-4">MCP WebSocket Bridge</h3>
       <p className="text-sm text-muted-foreground mb-4">
         Connect to an external MCP client (e.g. Claude, Cursor) via the
-        aipex-mcp-bridge. The bridge exposes Eterna browser tools to external AI
-        agents.
+        eterna-mcp-bridge. The bridge exposes Eterna browser tools to external
+        AI agents.
       </p>
 
       {/* Status indicator */}

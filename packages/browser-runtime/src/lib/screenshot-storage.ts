@@ -3,7 +3,7 @@
  * Stores screenshots with a uid for efficient reference and retrieval.
  * Applies an LRU eviction policy (max 50 screenshots).
  *
- * Uses the same DB/store as the aipex ScreenshotStorage so both
+ * Uses the same DB/store as the eterna ScreenshotStorage so both
  * can share screenshots during the migration period.
  */
 
@@ -21,7 +21,7 @@ export interface ScreenshotData {
   };
 }
 
-const DB_NAME = "aipex-screenshots-db";
+const DB_NAME = "eterna-screenshots-db";
 const DB_VERSION = 1;
 const STORE_NAME = "screenshots";
 const MAX_SCREENSHOTS = 50;
@@ -100,7 +100,7 @@ async function applyLRU(): Promise<void> {
 /**
  * Runtime-level screenshot storage (for use inside browser-runtime tools).
  * Shares the same IndexedDB database as the UI-level ScreenshotStorage
- * in aipex-react so screenshots are accessible across packages.
+ * in eterna-react so screenshots are accessible across packages.
  */
 export const RuntimeScreenshotStorage = {
   /**

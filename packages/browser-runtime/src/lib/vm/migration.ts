@@ -10,8 +10,8 @@ import {
 } from "../../skill/lib/storage/skill-storage";
 import { zenfs } from "./zenfs-manager";
 
-const MIGRATION_KEY = "aipex_zenfs_migration_status";
-const MIGRATION_V2_KEY = "aipex_zenfs_migration_v2_status";
+const MIGRATION_KEY = "eterna_zenfs_migration_status";
+const MIGRATION_V2_KEY = "eterna_zenfs_migration_v2_status";
 
 interface MigrationStatus {
   completed: boolean;

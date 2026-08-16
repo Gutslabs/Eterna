@@ -3,11 +3,11 @@
 ```
 @core                 → Pure TS, no platform deps. Defines interfaces.
 @browser-runtime      → Implements @core for Chrome. Depends on @core only.
-@aipex-react          → UI library. Depends on @core only (NOT browser-runtime).
+@eterna-react          → UI library. Depends on @core only (NOT browser-runtime).
 browser-ext           → Extension entry. Assembles all packages.
 ```
 
-**Key rule**: `@aipex-react` must NOT depend on `@browser-runtime`. Browser-specific code (ChromeStorageAdapter, browser tools) stays in `@browser-runtime` or `browser-ext`.
+**Key rule**: `@eterna-react` must NOT depend on `@browser-runtime`. Browser-specific code (ChromeStorageAdapter, browser tools) stays in `@browser-runtime` or `browser-ext`.
 
 ## Building and running
 

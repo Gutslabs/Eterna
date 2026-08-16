@@ -1,4 +1,4 @@
-import { tool } from "@aipexstudio/aipex-core";
+import { tool } from "@eterna/core";
 import { z } from "zod";
 import { getActiveTab } from "./tab-utils";
 
@@ -478,7 +478,7 @@ export async function fetchYoutubeTranscriptForTab(
 export const getYoutubeTranscriptTool = tool({
   name: "get_youtube_transcript",
   description:
-    "Fetch the full transcript (captions) of the YouTube video in the user's current tab. Use this whenever the user wants to summarize, explain, translate, quote, or ask questions about the YouTube video they are watching. Returns the complete transcript text and video metadata. Only works on a youtube.com/watch, youtu.be, /shorts or /live page.",
+    "Fetch the full transcript (captions) of the YouTube video in the user's current tab. Use this whenever the user wants to summarize, explain, translate, quote, or ask questions about the YouTube video they are watching. Returns the complete transcript text and video metadata. Only works on a youtube.com/watch, youtu.be, /shorts or /live page. If transcript parts are already auto-attached to the conversation as context blocks, work from those instead of calling this again.",
   parameters: z.object({
     language: z
       .string()

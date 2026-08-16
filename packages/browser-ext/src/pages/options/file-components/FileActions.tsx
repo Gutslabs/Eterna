@@ -1,12 +1,12 @@
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import type { FileTreeNode } from "@eterna/browser-runtime";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@aipexstudio/aipex-react/components/ui/dropdown-menu";
-import type { FileTreeNode } from "@aipexstudio/browser-runtime";
+} from "@eterna/react/components/ui/dropdown-menu";
 import { Eye, Info, MoreVertical, Trash2 } from "lucide-react";
 import type React from "react";
 import { useState } from "react";

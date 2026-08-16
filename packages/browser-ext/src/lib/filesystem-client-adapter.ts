@@ -2,16 +2,16 @@
  * FileSystemClient Adapter Implementation
  *
  * Adapts browser-runtime zenfs to the FileSystemClient interface
- * used by aipex-react UI components.
+ * used by eterna-react UI components.
  */
 
+import { zenfs } from "@eterna/browser-runtime";
 import type {
   DiskUsage,
   FileStats,
   FileSystemClient,
   FileTreeNode,
-} from "@aipexstudio/aipex-react";
-import { zenfs } from "@aipexstudio/browser-runtime";
+} from "@eterna/react";
 
 export class FileSystemClientAdapter implements FileSystemClient {
   async initialize(): Promise<void> {

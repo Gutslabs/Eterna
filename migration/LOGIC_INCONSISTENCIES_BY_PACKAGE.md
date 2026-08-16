@@ -1,6 +1,6 @@
-# AIPex vs new-aipex: Logic Inconsistencies by Package
+# Eterna vs new-eterna: Logic Inconsistencies by Package
 
-> **Purpose**: This document enumerates every confirmed logic/functionality gap between the legacy `aipex/` codebase and the new `new-aipex/packages/*` architecture. Each entry includes evidence paths, impact assessment, suggested migration target, and priority.
+> **Purpose**: This document enumerates every confirmed logic/functionality gap between the legacy `eterna/` codebase and the new `new-eterna/packages/*` architecture. Each entry includes evidence paths, impact assessment, suggested migration target, and priority.
 
 ---
 
@@ -9,15 +9,15 @@
 
 | Codebase               | Root Path              |
 | ---------------------- | ---------------------- |
-| Legacy (full-featured) | `aipex/`               |
-| New (restructured)     | `new-aipex/packages/*` |
+| Legacy (full-featured) | `eterna/`               |
+| New (restructured)     | `new-eterna/packages/*` |
 
 
 **Focus areas**: Tools, Context/Summarization, Skill system, UI components, Use-cases, Hosted services (auth, uploads, version-check).
 
 ---
 
-## 1. `packages/core` (`@aipexstudio/aipex-core`)
+## 1. `packages/core` (`@eterna/core`)
 
 ### 1.1 Conversation Compression/Summarization Strategy Differs Significantly
 
@@ -26,7 +26,7 @@
 
 | Aspect                      | Legacy                                                                                 | New                                                                                                              |
 | --------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Summary prompt              | High-density structured Markdown prompt (`aipex/src/lib/context/context-optimizer.ts`) | Simple character-length-capped summarizer instruction (`new-aipex/packages/core/src/conversation/compressor.ts`) |
+| Summary prompt              | High-density structured Markdown prompt (`eterna/src/lib/context/context-optimizer.ts`) | Simple character-length-capped summarizer instruction (`new-eterna/packages/core/src/conversation/compressor.ts`) |
 | Trigger condition           | Real `totalTokens` from `BackgroundContextManager.getTokenUsage()` hitting watermark   | Item count **or** optional token watermark                                                                       |
 | Tool-pair boundary handling | Explicit `adjustProtectedBoundary()` to avoid splitting assistant↔tool pairs           | `expandForToolCallClosure()` exists but logic is simpler                                                         |
 
@@ -48,19 +48,19 @@
 
 | Aspect          | Legacy                                                             | New                                                                                      |
 | --------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| Usage recording | `BackgroundContextManager.recordUsage()` aggregates real API usage | `AIPex.runExecution()` emits `metrics_update` event with `AgentMetrics`; `Session.addMetrics()` aggregates into `SessionMetrics` |
-| UI integration  | `TokenUsageIndicator.tsx` consumes usage                           | `TokenUsageIndicator` component in `@aipexstudio/aipex-react` consumes `useChatContext().metrics` |
+| Usage recording | `BackgroundContextManager.recordUsage()` aggregates real API usage | `Eterna.runExecution()` emits `metrics_update` event with `AgentMetrics`; `Session.addMetrics()` aggregates into `SessionMetrics` |
+| UI integration  | `TokenUsageIndicator.tsx` consumes usage                           | `TokenUsageIndicator` component in `@eterna/react` consumes `useChatContext().metrics` |
 
 
 **Impact**: ~~Cannot display real-time token consumption in UI.~~ Resolved.
 
 **Priority**: P1 (Completed)
 
-**Migration target**: `packages/core` + `packages/aipex-react` + `packages/browser-ext`
+**Migration target**: `packages/core` + `packages/eterna-react` + `packages/browser-ext`
 
 **Evidence**:
 - Core: `types.ts` — `AgentEvent.metrics_update` now includes optional `sessionId`
-- Core: `aipex.ts` — yields `{ type: "metrics_update", metrics, sessionId }` on success and error paths
+- Core: `eterna.ts` — yields `{ type: "metrics_update", metrics, sessionId }` on success and error paths
 - React: `use-chat.ts` — exposes `metrics: AgentMetrics | null` in return value and processes `metrics_update` events
 - React: `context.ts` — `ChatContextValue` includes `metrics` field
 - React: `components/chatbot/components/token-usage-indicator.tsx` — new component with compact/full modes
@@ -75,7 +75,7 @@
 
 | Legacy                                                              | New                                            |
 | ------------------------------------------------------------------- | ---------------------------------------------- |
-| `aipex/src/mcp/*` (UnifiedToolManager, tool converters, MCP server) | No `mcp/` directory; 0 matches for `**/mcp/**` |
+| `eterna/src/mcp/*` (UnifiedToolManager, tool converters, MCP server) | No `mcp/` directory; 0 matches for `**/mcp/**` |
 
 
 **Impact**: Dynamic tool registration / MCP-to-OpenAI conversion path does not exist.
@@ -84,11 +84,11 @@
 
 **Migration target**: N/A
 
-**Resolution**: The new architecture provides direct tool registration via `@aipexstudio/aipex-core` tool definitions passed to `AIPex.create()`. The MCP abstraction layer is superseded by this simpler pattern; no migration required.
+**Resolution**: The new architecture provides direct tool registration via `@eterna/core` tool definitions passed to `Eterna.create()`. The MCP abstraction layer is superseded by this simpler pattern; no migration required.
 
 ---
 
-## 2. `packages/browser-runtime` (`@aipexstudio/browser-runtime`)
+## 2. `packages/browser-runtime` (`@eterna/browser-runtime`)
 
 ### 2.1 Default `allBrowserTools` Surface Area Reduced + README Drift
 
@@ -102,8 +102,8 @@
 
 **Evidence**:
 
-- New: `new-aipex/packages/browser-runtime/src/tools/index.ts` (lines 31-88)
-- README: `new-aipex/packages/browser-runtime/README.md` (line 26, 40-45)
+- New: `new-eterna/packages/browser-runtime/src/tools/index.ts` (lines 31-88)
+- README: `new-eterna/packages/browser-runtime/README.md` (line 26, 40-45)
 
 **Impact**: Many commonly-used tools unavailable; documentation misleading.
 
@@ -145,7 +145,7 @@
 
 | Legacy                                                                         | New                                                                                                                                       |
 | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `aipex/src/mcp-servers/tab-groups.ts` → `groupTabsByAI()` with full LLM prompt | `new-aipex/packages/browser-runtime/src/tools/tab.ts` → returns `{ success: false, message: "...requires additional implementation..." }` |
+| `eterna/src/mcp-servers/tab-groups.ts` → `groupTabsByAI()` with full LLM prompt | `new-eterna/packages/browser-runtime/src/tools/tab.ts` → returns `{ success: false, message: "...requires additional implementation..." }` |
 
 
 **Impact**: ~~Core feature (smart tab grouping) non-functional.~~ Tool is no longer exposed to users.
@@ -201,7 +201,7 @@
 
 | Legacy                                                                                                        | New                                                                 |
 | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `get_page_images`, `get_page_performance`, `get_page_accessibility` (`aipex/src/mcp-servers/page-content.ts`) | Not found in `new-aipex/packages/browser-runtime/src/tools/page.ts` |
+| `get_page_images`, `get_page_performance`, `get_page_accessibility` (`eterna/src/mcp-servers/page-content.ts`) | Not found in `new-eterna/packages/browser-runtime/src/tools/page.ts` |
 
 
 **Impact**: Accessibility audits, performance checks unavailable.
@@ -217,7 +217,7 @@
 
 | Legacy                                                                                                                                                    | New                                                                                                        |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Three-tier: Server STT → ElevenLabs → Web Speech (`aipex/src/lib/voice/voice-input-manager.ts`, `aipex/src/interventions/implementations/voice-input.ts`) | Web Speech API only (`new-aipex/packages/browser-runtime/src/intervention/implementations/voice-input.ts`) |
+| Three-tier: Server STT → ElevenLabs → Web Speech (`eterna/src/lib/voice/voice-input-manager.ts`, `eterna/src/interventions/implementations/voice-input.ts`) | Web Speech API only (`new-eterna/packages/browser-runtime/src/intervention/implementations/voice-input.ts`) |
 
 
 **Impact**: Non-BYOK users lose server-side STT; BYOK users lose ElevenLabs path.
@@ -235,7 +235,7 @@
 
 | Legacy                                                                       | New                                                                                         |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `aipex/src/skill/lib/services/skill-manager.ts` has `refreshSkillMetadata()` | `new-aipex/packages/browser-runtime/src/skill/lib/services/skill-manager.ts` now has `refreshSkillMetadata()` |
+| `eterna/src/skill/lib/services/skill-manager.ts` has `refreshSkillMetadata()` | `new-eterna/packages/browser-runtime/src/skill/lib/services/skill-manager.ts` now has `refreshSkillMetadata()` |
 
 
 **Impact**: ~~Skill metadata may become stale after updates.~~ Resolved.
@@ -248,7 +248,7 @@
 
 ---
 
-## 3. `packages/aipex-react` (`@aipexstudio/aipex-react`)
+## 3. `packages/eterna-react` (`@eterna/react`)
 
 ### 3.1 UI Components Missing
 
@@ -257,9 +257,9 @@
 
 | Component             | Legacy path                                                | New status                                                                                         |
 | --------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `TokenUsageIndicator` | `aipex/src/lib/components/chatbot/TokenUsageIndicator.tsx` | Found (`packages/aipex-react/src/components/chatbot/components/token-usage-indicator.tsx`)         |
-| `AuthProvider`        | `aipex/src/lib/components/auth/AuthProvider.tsx`           | Moved to browser-ext (`packages/browser-ext/src/auth/AuthProvider.tsx`)                            |
-| `VoiceInput` (UI)     | `aipex/src/lib/components/voice-mode/voice-input.tsx`      | Found (`packages/aipex-react/src/components/voice/VoiceInput.tsx`)                                 |
+| `TokenUsageIndicator` | `eterna/src/lib/components/chatbot/TokenUsageIndicator.tsx` | Found (`packages/eterna-react/src/components/chatbot/components/token-usage-indicator.tsx`)         |
+| `AuthProvider`        | `eterna/src/lib/components/auth/AuthProvider.tsx`           | Moved to browser-ext (`packages/browser-ext/src/auth/AuthProvider.tsx`)                            |
+| `VoiceInput` (UI)     | `eterna/src/lib/components/voice-mode/voice-input.tsx`      | Found (`packages/eterna-react/src/components/voice/VoiceInput.tsx`)                                 |
 
 
 **Impact**: ~~Token monitor, login/user-state, voice-mode UI unavailable.~~ Resolved.
@@ -269,9 +269,9 @@
 **Migration target**: N/A
 
 **Resolution**:
-- `TokenUsageIndicator` was already migrated and is exported from `@aipexstudio/aipex-react/components/chatbot`.
+- `TokenUsageIndicator` was already migrated and is exported from `@eterna/react/components/chatbot`.
 - `AuthProvider` and `useAuth` now live in `packages/browser-ext/src/auth/` since authentication logic requires browser-specific Chrome APIs (cookies, tabs, scripting).
-- `VoiceInput` (3D particle UI + VAD + STT) migrated to `packages/aipex-react/src/components/voice/` with supporting voice engine code in `packages/aipex-react/src/lib/voice/`.
+- `VoiceInput` (3D particle UI + VAD + STT) migrated to `packages/eterna-react/src/components/voice/` with supporting voice engine code in `packages/eterna-react/src/lib/voice/`.
 
 ---
 
@@ -279,7 +279,7 @@
 
 ### 4.1 Tool Surface Defined Entirely by `allBrowserTools`
 
-- Extension agent config (`new-aipex/packages/browser-ext/src/lib/browser-agent-config.ts`) uses `allBrowserTools` directly.
+- Extension agent config (`new-eterna/packages/browser-ext/src/lib/browser-agent-config.ts`) uses `allBrowserTools` directly.
 - Any tool not in that bundle is invisible.
 
 **Impact**: See section 2.1 / 2.2.
@@ -293,12 +293,12 @@
 
 | Service                | Legacy path                                   | New status |
 | ---------------------- | --------------------------------------------- | ---------- |
-| `version-checker.ts`   | `aipex/src/lib/services/version-checker.ts`   | Not found  |
-| `web-auth.ts`          | `aipex/src/lib/services/web-auth.ts`          | Not found  |
-| `recording-upload.ts`  | `aipex/src/lib/services/recording-upload.ts`  | Not found  |
-| `screenshot-upload.ts` | `aipex/src/lib/services/screenshot-upload.ts` | Not found  |
-| `user-manuals-api.ts`  | `aipex/src/lib/services/user-manuals-api.ts`  | Not found  |
-| `replay-controller.ts` | `aipex/src/lib/services/replay-controller.ts` | Not found  |
+| `version-checker.ts`   | `eterna/src/lib/services/version-checker.ts`   | Not found  |
+| `web-auth.ts`          | `eterna/src/lib/services/web-auth.ts`          | Not found  |
+| `recording-upload.ts`  | `eterna/src/lib/services/recording-upload.ts`  | Not found  |
+| `screenshot-upload.ts` | `eterna/src/lib/services/screenshot-upload.ts` | Not found  |
+| `user-manuals-api.ts`  | `eterna/src/lib/services/user-manuals-api.ts`  | Not found  |
+| `replay-controller.ts` | `eterna/src/lib/services/replay-controller.ts` | Not found  |
 
 
 **Impact**: Hosted login, version check, upload, manual retrieval, replay all missing.
@@ -309,12 +309,12 @@
 
 ---
 
-## 5. `packages/dom-snapshot` (`@aipexstudio/dom-snapshot`)
+## 5. `packages/dom-snapshot` (`@eterna/dom-snapshot`)
 
 
 | Status       | Notes                                                                                                                          |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| ✅ Consistent | Legacy `aipex/src/experimental/dom-automation/snapshot/*` is a compatibility wrapper around the new package. No action needed. |
+| ✅ Consistent | Legacy `eterna/src/experimental/dom-automation/snapshot/*` is a compatibility wrapper around the new package. No action needed. |
 
 
 ---
@@ -324,7 +324,7 @@
 
 | Legacy                                                                            | New                                                                                       |
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `aipex/src/use-cases/*` (User Guide Generator, batch jobs, e2e testing templates) | `new-aipex/packages/use-cases/` does not exist; only mentioned in `MIGRATION_STRATEGY.md` |
+| `eterna/src/use-cases/*` (User Guide Generator, batch jobs, e2e testing templates) | `new-eterna/packages/use-cases/` does not exist; only mentioned in `MIGRATION_STRATEGY.md` |
 
 
 **Impact**: High-level workflow templates (screen recording → GIF/PDF export) unavailable.

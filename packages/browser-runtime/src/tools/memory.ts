@@ -1,5 +1,11 @@
-import { STORAGE_KEYS, tool } from "@aipexstudio/aipex-core";
+import { STORAGE_KEYS, tool } from "@eterna/core";
 import { z } from "zod";
+import {
+  captureToSupermemory,
+  forgetMatchingInSupermemory,
+  loadSupermemoryConfig,
+  searchSupermemory,
+} from "./supermemory-client";
 
 /**
  * Long-term user memory — durable facts the agent saves with the `remember`
@@ -53,18 +59,60 @@ export async function addMemory(
   }
   const entry: MemoryEntry = { id: newMemoryId(), text, createdAt: Date.now() };
   await persistMemories([...entries, entry].slice(-MAX_MEMORIES));
+  // Dual-write: feed the fact to the Supermemory extraction pipeline when the
+  // local server is configured. Soft-fail — chrome.storage stays the source of
+  // truth for the always-injected MEMORY block.
+  await captureToSupermemory(text);
   return { saved: true, id: entry.id };
 }
 
-/** Remove a fact by id. Returns false when no entry matched. */
+/**
+ * Remove a fact by id. Returns false when no entry matched. Also asks the
+ * Supermemory server to forget matching memories (soft — server may be off).
+ */
 export async function removeMemory(id: string): Promise<boolean> {
   const entries = await loadMemories();
-  const next = entries.filter((entry) => entry.id !== id);
-  if (next.length === entries.length) {
+  const removed = entries.find((entry) => entry.id === id);
+  if (!removed) {
     return false;
   }
-  await persistMemories(next);
+  await persistMemories(entries.filter((entry) => entry.id !== id));
+  await forgetMatchingInSupermemory(removed.text);
   return true;
+}
+
+/**
+ * One-shot import of the pre-Supermemory local memories into the server, so
+ * the profile starts warm. Runs at most once (flag in chrome.storage) and
+ * only when the server is configured; a failed push retries next time.
+ */
+export async function importLocalMemoriesOnce(): Promise<void> {
+  try {
+    if (!(await loadSupermemoryConfig())) {
+      return;
+    }
+    const flag = await chrome.storage.local.get(
+      STORAGE_KEYS.SUPERMEMORY_IMPORTED,
+    );
+    if (flag[STORAGE_KEYS.SUPERMEMORY_IMPORTED] === true) {
+      return;
+    }
+    const entries = await loadMemories();
+    if (entries.length > 0) {
+      const combined = [
+        "Durable facts the user saved in their browser assistant:",
+        ...entries.map((entry) => `- ${entry.text}`),
+      ].join("\n");
+      if (!(await captureToSupermemory(combined))) {
+        return;
+      }
+    }
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.SUPERMEMORY_IMPORTED]: true,
+    });
+  } catch {
+    // best-effort; retried on the next agent build
+  }
 }
 
 /** Markdown block appended to the system prompt; empty when nothing is stored. */
@@ -98,6 +146,37 @@ export const rememberTool = tool({
     return id
       ? { success: true, id }
       : { success: false, error: "Nothing to remember." };
+  },
+});
+
+export const recallTool = tool({
+  name: "recall",
+  description:
+    "Search the user's long-term memory for facts, preferences and past context beyond what your instructions already show. Use it when the user references something from before ('that repo I mentioned', 'my usual setup', 'like last time') or when personal context would change your answer. Returns matching memories; backed by the local Supermemory server when configured, otherwise the locally saved facts.",
+  parameters: z.object({
+    query: z
+      .string()
+      .describe("What to look for, e.g. 'preferred language', 'main repo'."),
+  }),
+  execute: async ({
+    query,
+  }): Promise<{
+    results: Array<{ memory: string; similarity?: number; updatedAt?: string }>;
+    source: "supermemory" | "local";
+  }> => {
+    const hits = await searchSupermemory(query);
+    if (hits !== null) {
+      return { results: hits, source: "supermemory" };
+    }
+    const needle = query.trim().toLowerCase();
+    const local = (await loadMemories())
+      .filter((entry) => entry.text.toLowerCase().includes(needle))
+      .slice(-10)
+      .map((entry) => ({
+        memory: entry.text,
+        updatedAt: new Date(entry.createdAt).toISOString(),
+      }));
+    return { results: local, source: "local" };
   },
 });
 

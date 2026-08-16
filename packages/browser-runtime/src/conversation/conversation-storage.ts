@@ -20,6 +20,10 @@ export class ConversationStorage {
   constructor(config: ConversationStorageConfig = {}) {
     this.config = {
       maxConversations: config.maxConversations ?? 300,
+      // Kept on the pre-rebrand name on purpose: this addresses the IndexedDB
+      // database every saved conversation already lives in. Renaming it points
+      // at a fresh empty database and the user's history silently disappears —
+      // it can only change alongside a record-copying migration.
       dbName: config.dbName ?? "aipex-conversations-db",
       storeName: config.storeName ?? "conversations",
     };

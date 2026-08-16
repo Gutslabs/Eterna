@@ -8,7 +8,7 @@
  * it — the sidebar opening, a fake-mouse message, or the user selecting text.
  */
 
-import type { CollectorOptions } from "@aipexstudio/dom-snapshot";
+import type { CollectorOptions } from "@eterna/dom-snapshot";
 import {
   bindOpenEternaShortcut,
   requestToggleEternaSidePanel,
@@ -341,14 +341,12 @@ function handleMessage(
   }
 
   if (
-    message?.type === "aipex:collect-dom-snapshot" ||
+    message?.type === "eterna:collect-dom-snapshot" ||
     message?.request === "collect-dom-snapshot"
   ) {
     (async () => {
       try {
-        const { collectDomSnapshot } = await import(
-          "@aipexstudio/dom-snapshot"
-        );
+        const { collectDomSnapshot } = await import("@eterna/dom-snapshot");
         const snapshot = collectDomSnapshot(document, message.options);
         sendResponse({ success: true, data: snapshot });
       } catch (error) {

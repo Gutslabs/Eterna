@@ -1,0 +1,30 @@
+{
+  "name": "@eterna/eval",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Online-Mind2Web evaluation harness — drives the Eterna extension in a real Chrome via the MCP daemon",
+  "engines": {
+    "node": ">=20"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/run.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.66",
+    "@ai-sdk/google": "^3.0.52",
+    "@ai-sdk/openai": "^3.0.47",
+    "@eterna/core": "workspace:*",
+    "tsx": "^4.21.0",
+    "ws": "^8.21.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "25.2.3",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

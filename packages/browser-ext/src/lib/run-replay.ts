@@ -1,4 +1,4 @@
-import type { UIMessage } from "@aipexstudio/aipex-react/types";
+import type { UIMessage } from "@eterna/react/types";
 
 export interface RunReplayIdentity {
   userMessageId: string | null;

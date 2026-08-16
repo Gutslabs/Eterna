@@ -759,11 +759,11 @@ async function performScrollTo(
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: (uid: string) => {
-        // Snapshots tag elements with data-aipex-nodeid (see snapshot-manager
-        // injectNodeIdsToPage); querying data-aipex-uid never matched, so
+        // Snapshots tag elements with data-eterna-nodeid (see snapshot-manager
+        // injectNodeIdsToPage); querying data-eterna-uid never matched, so
         // scroll_to always failed with "not found".
         const element = document.querySelector(
-          `[data-aipex-nodeid="${CSS.escape(uid)}"]`,
+          `[data-eterna-nodeid="${CSS.escape(uid)}"]`,
         );
         if (!element) {
           return {

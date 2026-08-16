@@ -17,10 +17,10 @@ renderChatApp();
 // idle and load the modules lazily so it costs nothing until the panel is up.
 const prewarmSkillVm = () => {
   void Promise.all([
-    import("@aipexstudio/browser-runtime/lib/vm/zenfs-manager").then((m) =>
+    import("@eterna/browser-runtime/lib/vm/zenfs-manager").then((m) =>
       m.zenfs.initialize(),
     ),
-    import("@aipexstudio/browser-runtime/lib/vm/quickjs-manager").then((m) =>
+    import("@eterna/browser-runtime/lib/vm/quickjs-manager").then((m) =>
       m.quickjs.initialize(),
     ),
   ])

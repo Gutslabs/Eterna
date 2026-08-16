@@ -2,9 +2,15 @@
  * Intervention UI - Platform-specific integration for browser extension
  *
  * This component bridges the intervention system from @browser-runtime
- * with the UI components from @aipex-react, respecting package architecture.
+ * with the UI components from @eterna-react, respecting package architecture.
  */
 
+import {
+  type InterventionEvent,
+  type InterventionState,
+  interventionManager,
+  selectionManager,
+} from "@eterna/browser-runtime";
 import {
   type InterventionMode,
   InterventionModeToggle,
@@ -13,13 +19,7 @@ import {
   type SelectionOption,
   type UserSelectionResult,
   VoiceCard,
-} from "@aipexstudio/aipex-react/components/intervention";
-import {
-  type InterventionEvent,
-  type InterventionState,
-  interventionManager,
-  selectionManager,
-} from "@aipexstudio/browser-runtime";
+} from "@eterna/react/components/intervention";
 import { useEffect, useState } from "react";
 
 interface InterventionUIProps {

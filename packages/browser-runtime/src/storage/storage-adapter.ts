@@ -1,4 +1,4 @@
-import { type KeyValueStorage, safeJsonParse } from "@aipexstudio/aipex-core";
+import { type KeyValueStorage, safeJsonParse } from "@eterna/core";
 
 export type WatchCallback<T> = (change: { newValue?: T; oldValue?: T }) => void;
 
@@ -13,6 +13,7 @@ export type WatchCallback<T> = (change: { newValue?: T; oldValue?: T }) => void;
  */
 export class ChromeStorageAdapter<T = unknown> implements KeyValueStorage<T> {
   private readonly areaName: "local" | "sync";
+  private readonly updateQueues = new Map<string, Promise<void>>();
 
   constructor(area: "local" | "sync" = "local") {
     this.areaName = area;
@@ -42,6 +43,47 @@ export class ChromeStorageAdapter<T = unknown> implements KeyValueStorage<T> {
     }
     const parsed = safeJsonParse<T>(localStorage.getItem(key));
     return parsed ?? null;
+  }
+
+  async update(key: string, updater: (current: T | null) => T): Promise<T> {
+    const previous = this.updateQueues.get(key) ?? Promise.resolve();
+    const operation = previous
+      .catch(() => {})
+      .then(async () => {
+        const write = async (): Promise<T> => {
+          const next = updater(await this.load(key));
+          await this.save(key, next);
+          return next;
+        };
+        const locks =
+          typeof navigator !== "undefined"
+            ? (
+                navigator as Navigator & {
+                  locks?: {
+                    request<R>(
+                      name: string,
+                      callback: () => Promise<R>,
+                    ): Promise<R>;
+                  };
+                }
+              ).locks
+            : undefined;
+        return locks
+          ? locks.request(`eterna-storage:${this.areaName}:${key}`, write)
+          : write();
+      });
+    const settled = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.updateQueues.set(key, settled);
+    try {
+      return await operation;
+    } finally {
+      if (this.updateQueues.get(key) === settled) {
+        this.updateQueues.delete(key);
+      }
+    }
   }
 
   async delete(key: string): Promise<void> {

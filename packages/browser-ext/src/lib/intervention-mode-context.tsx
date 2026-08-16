@@ -3,7 +3,7 @@
  * Provides intervention mode state across the browser extension chat UI
  */
 
-import type { InterventionMode } from "@aipexstudio/aipex-react/components/intervention";
+import type { InterventionMode } from "@eterna/react/components/intervention";
 import { createContext, type ReactNode, useContext } from "react";
 
 interface InterventionModeContextValue {

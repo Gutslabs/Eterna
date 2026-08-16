@@ -2,8 +2,24 @@
 # Exclude README files from typos checking (they contain multiple languages)
 # Exclude bundled-modules directory (contains third-party bundled code)
 # Exclude mcp-bridge directory (tool schemas contain glob patterns that trigger false positives)
-extend-exclude = ["README*.md", "**/bundled-modules/**", "mcp-bridge/**"]
+# Exclude non-English locales: the checker reads Turkish as misspelled English
+# and "corrects" real words ("Tema" -> "Team", "gir" -> "git"), which silently
+# breaks the translation.
+# Exclude the grammar-correct skill: its canonical example is deliberately
+# misspelled user input, and "fixing" it destroys what the example teaches.
+extend-exclude = [
+  "README*.md",
+  "**/bundled-modules/**",
+  "mcp-bridge/**",
+  "**/i18n/locales/!(en).json",
+  "**/skill/built-in/grammar-correct/**",
+]
 
 [default.extend-identifiers]
 # "CertiK" is a smart-contract audit firm (proper noun), not a typo of "Certificate"
 CertiK = "CertiK"
+
+[default.extend-words]
+# From glob patterns like "*[Ss]earch*" in the tool docs: the checker reads the
+# tail of the character class as a word.
+earch = "earch"

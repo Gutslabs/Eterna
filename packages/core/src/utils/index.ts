@@ -7,5 +7,7 @@ export {
   isTransientScreenshotItem,
   pruneTransientScreenshotItems,
   shapeScreenshotItems,
+  stripImageInputs,
   TRANSIENT_SCREENSHOT_MARKER,
+  VISION_FALLBACK_TEXT,
 } from "./screenshot-shaping.js";

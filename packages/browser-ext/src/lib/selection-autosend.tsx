@@ -13,7 +13,7 @@
 import {
   useAgentContext,
   useChatContext,
-} from "@aipexstudio/aipex-react/components/chatbot";
+} from "@eterna/react/components/chatbot";
 import { useEffect, useRef, useState } from "react";
 import { PENDING_AUTOSEND_KEY } from "./pending-autosend";
 

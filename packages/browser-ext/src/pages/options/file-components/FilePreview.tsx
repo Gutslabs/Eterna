@@ -1,20 +1,17 @@
-import {
-  Alert,
-  AlertDescription,
-} from "@aipexstudio/aipex-react/components/ui/alert";
-import { Badge } from "@aipexstudio/aipex-react/components/ui/badge";
-import { Button } from "@aipexstudio/aipex-react/components/ui/button";
+import type { FileInfo } from "@eterna/browser-runtime";
+import { skillManager, zenfs } from "@eterna/browser-runtime";
+import { Alert, AlertDescription } from "@eterna/react/components/ui/alert";
+import { Badge } from "@eterna/react/components/ui/badge";
+import { Button } from "@eterna/react/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@aipexstudio/aipex-react/components/ui/dialog";
-import { Textarea } from "@aipexstudio/aipex-react/components/ui/textarea";
-import { useTheme } from "@aipexstudio/aipex-react/theme/context";
-import type { FileInfo } from "@aipexstudio/browser-runtime";
-import { skillManager, zenfs } from "@aipexstudio/browser-runtime";
+} from "@eterna/react/components/ui/dialog";
+import { Textarea } from "@eterna/react/components/ui/textarea";
+import { useTheme } from "@eterna/react/theme/context";
 import {
   AlertCircle,
   Code,

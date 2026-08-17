@@ -20,10 +20,14 @@ export class SkillConflictError extends Error {
 }
 
 /**
- * Parse SKILL.md content to extract metadata from YAML frontmatter
+ * Parse SKILL.md content to extract metadata from YAML frontmatter.
+ *
+ * The frontmatter must open the file, as the skill format requires — but a
+ * leading BOM or blank lines are tolerated, and CRLF is accepted so a skill
+ * zipped on Windows still loads.
  */
 export function parseSkillMetadata(markdown: string): ParsedSkillMetadata {
-  const frontmatterMatch = markdown.match(/^---\n(.*?)\n---/s);
+  const frontmatterMatch = markdown.match(/^\uFEFF?\s*---\r?\n(.*?)\r?\n---/s);
   if (!frontmatterMatch) {
     throw new Error("No YAML frontmatter found in SKILL.md");
   }
@@ -37,9 +41,9 @@ export function parseSkillMetadata(markdown: string): ParsedSkillMetadata {
   const versionMatch = frontmatter.match(/version:\s*(.+)/);
 
   return {
-    name: nameMatch?.[1]?.trim() ?? "unknown-skill",
-    description: descMatch?.[1]?.trim() ?? "No description provided",
-    version: versionMatch?.[1]?.trim() ?? "1.0.0",
+    name: nameMatch?.[1]?.trim() || "unknown-skill",
+    description: descMatch?.[1]?.trim() || "No description provided",
+    version: versionMatch?.[1]?.trim() || "1.0.0",
   };
 }
 

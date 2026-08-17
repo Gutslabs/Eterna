@@ -17,7 +17,7 @@ import uxAuditWalkthroughMarkdown from "../../built-in/ux-audit-walkthrough/SKIL
 import wcag22A11yAuditMarkdown from "../../built-in/wcag22-a11y-audit/SKILL.md?raw";
 
 // Bump when the vendored diagram-design content changes.
-const DIAGRAM_DESIGN_SYNC_VERSION = "2.4.0-eterna.1";
+const DIAGRAM_DESIGN_SYNC_VERSION = "2.4.0-eterna.2";
 
 import type { ParsedSkill, SkillMetadata } from "../../skill/types.js";
 import { skillStorage } from "../storage/skill-storage";

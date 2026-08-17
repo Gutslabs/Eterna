@@ -265,8 +265,7 @@ export interface ExtractedMarkdown {
  * Extraction shared by read_url (fetched HTML) and read_page (the active tab's
  * live HTML). `defuddle/node` parses the HTML string with linkedom — no DOM —
  * and runs the async site extractors (FxTwitter for X, Reddit/HN threads).
- * Lazy-imported to keep the ~1MB bundle off the SW eager path. Returns null
- * when nothing readable was found.
+ * Returns null when nothing readable was found.
  */
 /**
  * Defuddle's dependency tree carries a DOMParser shim that probes `window` /
@@ -295,7 +294,50 @@ async function ensureDomGlobalsForExtraction(): Promise<void> {
   scope.DOMParser ??= DOMParser;
   // KaTeX (bundled inside defuddle for math markup) builds nodes straight off
   // the document global; lend it a detached linkedom document.
-  scope.document ??= parseHTML("<html><body></body></html>").document;
+  scope.document ??= createExtractionDocument();
+}
+
+/**
+ * The linkedom document handed to defuddle's dependency tree, taught the one
+ * legacy API turndown needs.
+ *
+ * Turndown (bundled inside defuddle's markdown converter) picks its HTML
+ * parser ONCE, when its module body evaluates. MV3 forbids dynamic import in
+ * the service worker, so that happens at worker startup — long before this
+ * function can alias `window` — and with no `window.DOMParser` in sight it
+ * locks itself to the legacy path: `document.implementation.createHTMLDocument`
+ * followed by open/write/close. linkedom implements none of those, which
+ * surfaced as "Cannot read properties of undefined (reading
+ * 'createHTMLDocument')" and cost read_url its markdown on every page.
+ *
+ * Since the choice cannot be un-made after the fact, satisfy it instead: the
+ * shim below is the whole legacy contract, backed by linkedom's real parser.
+ */
+function createExtractionDocument(): unknown {
+  const document = parseHTML("<html><body></body></html>").document;
+  Object.defineProperty(document, "implementation", {
+    configurable: true,
+    value: {
+      createHTMLDocument(): unknown {
+        const scratch = parseHTML(
+          "<!doctype html><html><head></head><body></body></html>",
+        ).document;
+        let buffer = "";
+        return Object.assign(scratch, {
+          open(): void {
+            buffer = "";
+          },
+          write(chunk: string): void {
+            buffer += chunk;
+          },
+          close(): void {
+            scratch.body.innerHTML = buffer;
+          },
+        });
+      },
+    },
+  });
+  return document;
 }
 
 export async function extractHtmlToMarkdown(

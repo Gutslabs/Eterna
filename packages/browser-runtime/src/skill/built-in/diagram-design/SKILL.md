@@ -1,3 +1,11 @@
+---
+name: diagram-design
+description: Create branded architecture, IT current-state, flowchart, sequence, state machine, ER/data model, timeline, swimlane, quadrant, radar/spider, loop/flywheel, nested, tree, org chart, layer stack, Venn, pyramid/funnel, bar, line, Gantt and scatter charts, high-level, process, medallion, data flow, DP integration, or DP security matrix diagrams as standalone HTML/SVG/PNG. Redraw .drawio/.drawio.png/.drawio.svg or Mermaid .mmd sources at a chosen size/detail; onboard brand tokens from a website; add semantic patterns, callouts, accessible motion, or sketchy/hand-drawn styling.
+license: MIT
+metadata:
+  version: "2.4"
+---
+
 <!-- ============================================================
 ETERNA ADAPTATION NOTE (upstream content below is unchanged)
 Vendored from https://github.com/cathrynlavery/diagram-design (MIT).
@@ -13,14 +21,6 @@ In this browser runtime:
 - Skip the style-guide onboarding gate (section 0): use the shipped
   default tokens unless the user asks for brand colors.
 ============================================================ -->
-
----
-name: diagram-design
-description: Create branded architecture, IT current-state, flowchart, sequence, state machine, ER/data model, timeline, swimlane, quadrant, radar/spider, loop/flywheel, nested, tree, org chart, layer stack, Venn, pyramid/funnel, bar, line, Gantt and scatter charts, high-level, process, medallion, data flow, DP integration, or DP security matrix diagrams as standalone HTML/SVG/PNG. Redraw .drawio/.drawio.png/.drawio.svg or Mermaid .mmd sources at a chosen size/detail; onboard brand tokens from a website; add semantic patterns, callouts, accessible motion, or sketchy/hand-drawn styling.
-license: MIT
-metadata:
-  version: "2.4"
----
 
 # Diagram Design
 

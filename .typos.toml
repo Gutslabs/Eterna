@@ -29,3 +29,5 @@ earch = "earch"
 # Turkish for "plain" — appears in skill trigger phrases ("sade bir dille"),
 # not a typo of "sad".
 sade = "sade"
+# Turkish for "system" — appears in Turkish test fixtures and prompt text.
+sistem = "sistem"

@@ -8,6 +8,7 @@ import {
   getSkillAssets,
   getSkillReferences,
   getSkillScripts,
+  parseSkillMetadata,
 } from "../utils/zip-utils";
 
 export interface SkillSummary {
@@ -78,25 +79,9 @@ export class SkillRegistry {
     this.initialized = true;
   }
 
+  /** One parser for both callers — this used to be a divergent copy. */
   parseSkillMetadata(markdown: string): Partial<SkillMetadata> {
-    const frontmatterMatch = markdown.match(/^---\n(.*?)\n---/s);
-    if (!frontmatterMatch) {
-      throw new Error("No YAML frontmatter found in SKILL.md");
-    }
-
-    const frontmatter = frontmatterMatch[1];
-    if (!frontmatter) {
-      throw new Error("Empty YAML frontmatter in SKILL.md");
-    }
-    const nameMatch = frontmatter.match(/name:\s*(.+)/);
-    const descMatch = frontmatter.match(/description:\s*(.+)/);
-    const versionMatch = frontmatter.match(/version:\s*(.+)/);
-
-    return {
-      name: nameMatch?.[1]?.trim() || "unknown-skill",
-      description: descMatch?.[1]?.trim() || "No description provided",
-      version: versionMatch?.[1]?.trim() || "1.0.0",
-    };
+    return parseSkillMetadata(markdown);
   }
 
   getSkillSummaries(): string {

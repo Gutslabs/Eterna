@@ -19,6 +19,22 @@ import wcag22A11yAuditMarkdown from "../../built-in/wcag22-a11y-audit/SKILL.md?r
 // Bump when the vendored diagram-design content changes.
 const DIAGRAM_DESIGN_SYNC_VERSION = "2.4.0-eterna.2";
 
+/**
+ * Built-ins whose SKILL.md is code-owned: the bundled text is the truth, and
+ * a copy on disk that differs is simply out of date.
+ *
+ * skill-creator is deliberately absent — it also ships scripts/, and its
+ * loader decides by whether the skill directory exists, so writing SKILL.md
+ * here would make it skip those on a fresh install.
+ */
+const BUILTIN_SKILL_MARKDOWN: ReadonlyArray<readonly [string, string]> = [
+  ["ux-audit-walkthrough", uxAuditWalkthroughMarkdown],
+  ["wcag22-a11y-audit", wcag22A11yAuditMarkdown],
+  ["grammar-correct", grammarCorrectMarkdown],
+  ["diagram-design", diagramDesignSkill.skillMd],
+  ["basit-anlatim", basitAnlatimMarkdown],
+];
+
 import type { ParsedSkill, SkillMetadata } from "../../skill/types.js";
 import { skillStorage } from "../storage/skill-storage";
 import { zipSkillDirectory } from "../utils/zip-utils";
@@ -109,6 +125,12 @@ export class SkillManager {
   private async runInitialize(): Promise<void> {
     try {
       console.log("🔄 Initializing SkillManager...");
+
+      // Bundled SKILL.md files first: skillStorage.initialize() scans /skills
+      // and parses every SKILL.md it finds, so a built-in still holding the
+      // previous release's text is read — and complained about — before the
+      // loaders below could heal it.
+      await this.syncBuiltinSkillMarkdown();
 
       // Initialize all components
       console.log("📦 Initializing skillStorage...");
@@ -622,6 +644,32 @@ export class SkillManager {
     }
   }
 
+  /**
+   * Bring every code-owned SKILL.md on disk up to the bundled text.
+   *
+   * Write-if-missing was the old policy for some of these, which pinned users
+   * to whatever shipped the day they installed; a content compare means an
+   * edited skill actually reaches them. One read per built-in, and a write
+   * only when the text really changed.
+   */
+  private async syncBuiltinSkillMarkdown(): Promise<void> {
+    for (const [skillName, markdown] of BUILTIN_SKILL_MARKDOWN) {
+      try {
+        const skillPath = zenfs.getSkillPath(skillName);
+        const skillMdPath = `${skillPath}/SKILL.md`;
+        const existing = (await zenfs.exists(skillMdPath))
+          ? String(await zenfs.readFile(skillMdPath, "utf8"))
+          : null;
+        if (existing === markdown) continue;
+        await zenfs.mkdir(skillPath, { recursive: true });
+        await zenfs.writeFile(skillMdPath, markdown);
+        console.log(`✅ Built-in SKILL.md synced: ${skillName}`);
+      } catch (error) {
+        console.error(`❌ Failed to sync built-in ${skillName}:`, error);
+      }
+    }
+  }
+
   private async loadBuiltinSkillCreator(): Promise<void> {
     try {
       console.log("📦 Creating built-in skill-creator...");
@@ -705,25 +753,9 @@ export class SkillManager {
     try {
       console.log("📦 Creating built-in ux-audit-walkthrough...");
 
+      // SKILL.md is already current — syncBuiltinSkillMarkdown() writes it
+      // before the storage scan. This only ensures the metadata row.
       const skillName = "ux-audit-walkthrough";
-      const skillPath = zenfs.getSkillPath(skillName);
-      const skillMdPath = `${skillPath}/SKILL.md`;
-
-      // Check if SKILL.md file exists (not just the directory)
-      const skillMdExists = await zenfs.exists(skillMdPath);
-
-      if (!skillMdExists) {
-        // Create skill directory and write SKILL.md
-        await zenfs.mkdir(skillPath, { recursive: true });
-        await zenfs.writeFile(skillMdPath, uxAuditWalkthroughMarkdown);
-        console.log(
-          `✅ UX-audit-walkthrough files written to ZenFS: ${skillPath}`,
-        );
-      } else {
-        console.log(
-          "✅ Built-in ux-audit-walkthrough SKILL.md already exists in ZenFS",
-        );
-      }
 
       // Always check if metadata exists in IndexedDB, and create if missing
       const existingMetadata = await skillStorage.getSkillMetadata(skillName);
@@ -764,25 +796,8 @@ export class SkillManager {
     try {
       console.log("📦 Creating built-in wcag22-a11y-audit...");
 
+      // SKILL.md handled by syncBuiltinSkillMarkdown(); metadata only here.
       const skillName = "wcag22-a11y-audit";
-      const skillPath = zenfs.getSkillPath(skillName);
-      const skillMdPath = `${skillPath}/SKILL.md`;
-
-      // Check if SKILL.md file exists (not just the directory)
-      const skillMdExists = await zenfs.exists(skillMdPath);
-
-      if (!skillMdExists) {
-        // Create skill directory and write SKILL.md
-        await zenfs.mkdir(skillPath, { recursive: true });
-        await zenfs.writeFile(skillMdPath, wcag22A11yAuditMarkdown);
-        console.log(
-          `✅ wcag22-a11y-audit files written to ZenFS: ${skillPath}`,
-        );
-      } else {
-        console.log(
-          "✅ Built-in wcag22-a11y-audit SKILL.md already exists in ZenFS",
-        );
-      }
 
       // Always check if metadata exists in IndexedDB, and create if missing
       const existingMetadata = await skillStorage.getSkillMetadata(skillName);
@@ -816,20 +831,8 @@ export class SkillManager {
 
   private async loadBuiltinGrammarCorrect(): Promise<void> {
     try {
+      // SKILL.md handled by syncBuiltinSkillMarkdown(); metadata only here.
       const skillName = "grammar-correct";
-      const skillPath = zenfs.getSkillPath(skillName);
-      const skillMdPath = `${skillPath}/SKILL.md`;
-
-      // Built-in content is code-owned: always sync the bundled SKILL.md into
-      // ZenFS when it changed, so shipped skill updates actually reach users
-      // (write-if-missing would pin them to the first installed version).
-      const existing = (await zenfs.exists(skillMdPath))
-        ? String(await zenfs.readFile(skillMdPath, "utf8"))
-        : null;
-      if (existing !== grammarCorrectMarkdown) {
-        await zenfs.mkdir(skillPath, { recursive: true });
-        await zenfs.writeFile(skillMdPath, grammarCorrectMarkdown);
-      }
 
       const existingMetadata = await skillStorage.getSkillMetadata(skillName);
       if (!existingMetadata) {
@@ -869,10 +872,6 @@ export class SkillManager {
       if (marker !== DIAGRAM_DESIGN_SYNC_VERSION) {
         await zenfs.mkdir(`${skillPath}/references`, { recursive: true });
         await zenfs.writeFile(
-          `${skillPath}/SKILL.md`,
-          diagramDesignSkill.skillMd,
-        );
-        await zenfs.writeFile(
           `${skillPath}/LICENSE.txt`,
           diagramDesignSkill.license,
         );
@@ -907,20 +906,8 @@ export class SkillManager {
 
   private async loadBuiltinBasitAnlatim(): Promise<void> {
     try {
+      // SKILL.md handled by syncBuiltinSkillMarkdown(); metadata only here.
       const skillName = "basit-anlatim";
-      const skillPath = zenfs.getSkillPath(skillName);
-      const skillMdPath = `${skillPath}/SKILL.md`;
-
-      // Built-in content is code-owned: sync the bundled SKILL.md whenever it
-      // changed, so shipped updates reach users (same policy as
-      // grammar-correct).
-      const existing = (await zenfs.exists(skillMdPath))
-        ? String(await zenfs.readFile(skillMdPath, "utf8"))
-        : null;
-      if (existing !== basitAnlatimMarkdown) {
-        await zenfs.mkdir(skillPath, { recursive: true });
-        await zenfs.writeFile(skillMdPath, basitAnlatimMarkdown);
-      }
 
       const existingMetadata = await skillStorage.getSkillMetadata(skillName);
       if (!existingMetadata) {
